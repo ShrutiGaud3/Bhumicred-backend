@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Environment Variables & Secrets
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Uploads directory (ignore actual uploads, keep folder structure)
+uploads/*
+!uploads/.gitkeep
+
+# OS and IDE Files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Temporary & Build Output
+dist/
+tmp/
+temp/
