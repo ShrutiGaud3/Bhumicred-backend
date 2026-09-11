@@ -263,6 +263,9 @@ export const insuranceService = {
   getUserPolicies: async (userId, userRole, query = {}) => {
     const filter = {};
     if (userRole !== 'SUPER_ADMIN' && userRole !== 'GOVERNMENT_OFFICIAL' && userRole !== 'GOVERNMENT') {
+      if (!userId) {
+        return [];
+      }
       filter.userId = userId;
     } else if (query.userId) {
       filter.userId = query.userId;
@@ -279,38 +282,6 @@ export const insuranceService = {
     let policies = await InsurancePolicy.find(filter)
       .sort({ createdAt: -1 })
       .populate('landId', 'landName surveyNumber khasraNumber area boundaries');
-
-    // Seed default starter policy if none exist for demo
-    if (policies.length === 0 && (userRole === 'FARMER' || userRole === 'SUPER_ADMIN')) {
-      const anyLand = await Land.findOne({ ownerId: userId }) || await Land.findOne();
-      if (anyLand) {
-        const seedPolicy = await InsurancePolicy.create({
-          policyNumber: `BC-POL-${new Date().getFullYear()}-00481`,
-          userId: userId,
-          userName: 'Simran Sonaniya',
-          userMobile: '9575261938',
-          landId: anyLand._id,
-          landName: anyLand.landName,
-          surveyNumber: anyLand.surveyNumber,
-          khasraNumber: anyLand.khasraNumber,
-          planName: 'Comprehensive Teak & Sandalwood Cover',
-          category: 'Commercial Agroforestry',
-          insuredTreeCount: 180,
-          speciesSummary: '120 Indian Teak + 60 Red Sandalwood',
-          sumInsured: 1450000,
-          annualPremium: 18200,
-          grossPremium: 54600,
-          governmentSubsidyPercent: 40,
-          governmentSubsidyAmount: 21840,
-          farmerNetPayable: 32760,
-          durationMonths: 36,
-          startDate: new Date('2026-06-01'),
-          endDate: new Date('2029-05-31'),
-          status: 'ACTIVE',
-        });
-        policies = [seedPolicy];
-      }
-    }
 
     return policies;
   },
