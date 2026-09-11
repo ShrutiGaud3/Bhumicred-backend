@@ -13,8 +13,15 @@ export const insuranceController = {
     return sendCreated(res, 'Tree insurance policy activated & bond generated', policy);
   }),
 
+  getInsurancePlans: asyncHandler(async (req, res) => {
+    const plans = await insuranceService.getInsurancePlans();
+    return sendSuccess(res, 'Insurance plans catalog retrieved successfully', plans);
+  }),
+
   getUserPolicies: asyncHandler(async (req, res) => {
-    const policies = await insuranceService.getUserPolicies(req.user.id, req.user.role, req.query);
+    const userId = req.user?.id || req.user?._id;
+    const userRole = req.user?.role || 'FARMER';
+    const policies = await insuranceService.getUserPolicies(userId, userRole, req.query);
     return sendSuccess(res, 'Policies retrieved successfully', policies);
   }),
 

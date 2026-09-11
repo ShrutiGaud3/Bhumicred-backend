@@ -1,17 +1,16 @@
 import { body, param, query } from 'express-validator';
 
 export const validateBookSoilTest = [
-  body('landId')
-    .notEmpty()
-    .withMessage('Target Land Parcel ID is required'),
-  body('packageId').optional().isString().withMessage('Package ID must be a string'),
-  body('pickupDate').notEmpty().withMessage('Pickup date is required'),
+  body('landId').optional().trim(),
+  body('packageId').optional().isString(),
+  body('pickupDate').optional().trim(),
   body('pickupTimeSlot').optional().isString(),
 ];
 
 export const validateDispatchVan = [
-  body('targetVillage').notEmpty().withMessage('Target village panchayat is required'),
-  body('scheduledDate').notEmpty().withMessage('Scheduled date is required'),
+  body('targetVillage').optional().trim(),
+  body('scheduledDate').optional().trim(),
+  body('district').optional().trim(),
   body('vanId').optional().isString(),
 ];
 

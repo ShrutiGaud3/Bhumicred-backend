@@ -288,9 +288,19 @@ class ProjectService {
    * Create new sustainability project (Admin / Government / Partner)
    */
   async createProject(user, projectData) {
+    const title = projectData.title || projectData.name || 'Community Agroforestry & Carbon Project';
+    const scope = projectData.scope || projectData.description || 'Community afforestation and soil restoration initiative.';
+    const category = (projectData.category || 'CIVIC_AGROFORESTRY').toUpperCase().replace(/[\s-]+/g, '_');
+    const categoryLabel =
+      projectData.categoryLabel ||
+      category
+        .split('_')
+        .map((w) => w.charAt(0) + w.slice(1).toLowerCase())
+        .join(' ');
+
     const slug =
       projectData.slug ||
-      projectData.title
+      title
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/(^-|-$)/g, '') + `-${Date.now().toString().slice(-4)}`;
@@ -308,7 +318,7 @@ class ProjectService {
               date: new Date().toLocaleDateString('en-GB'),
               completed: true,
               completedAt: new Date(),
-              verifiedBy: user.name || 'System Official',
+              verifiedBy: user?.name || user?.fullName || 'System Official',
             },
             {
               title: 'Farmer Enrollment & Sapling Distribution',
@@ -326,9 +336,13 @@ class ProjectService {
 
     const project = new Project({
       ...projectData,
+      title,
+      scope,
+      category,
+      categoryLabel,
       projectCode,
       slug,
-      createdBy: user._id || user.id,
+      createdBy: user?._id || user?.id,
       milestones,
     });
 
@@ -429,21 +443,30 @@ class ProjectService {
    * Update or verify milestone
    */
   async updateMilestone(projectId, milestoneIndex, user, updateData) {
-    const project = await Project.findById(projectId);
+    let project = null;
+    if (typeof projectId === 'string' && projectId.match(/^[0-9a-fA-F]{24}$/)) {
+      project = await Project.findById(projectId);
+    }
     if (!project) {
-      throw new Error('Project not found');
+      project = await Project.findOne({ projectCode: projectId });
+    }
+    if (!project) {
+      project = await Project.findOne({ slug: projectId });
+    }
+    if (!project) {
+      throw new Error(`Project not found with ID/Code: ${projectId}`);
     }
 
     const milestone = project.milestones[milestoneIndex];
     if (!milestone) {
-      throw new Error('Milestone not found');
+      throw new Error(`Milestone at index ${milestoneIndex} not found on project ${project.projectCode}`);
     }
 
     if (typeof updateData.completed === 'boolean') {
       milestone.completed = updateData.completed;
       if (updateData.completed) {
         milestone.completedAt = new Date();
-        milestone.verifiedBy = user.name || 'Authorised Official';
+        milestone.verifiedBy = user?.name || user?.fullName || 'Authorised Official';
       } else {
         milestone.completedAt = null;
         milestone.verifiedBy = null;

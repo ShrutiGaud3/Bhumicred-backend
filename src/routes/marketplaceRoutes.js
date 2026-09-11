@@ -52,6 +52,7 @@ router.post(
   authorizeRoles(
     ROLES.SUPER_ADMIN,
     ROLES.OPERATIONS_ADMIN,
+    ROLES.GOVERNMENT,
     ROLES.PARTNER
   ),
   createProductValidator,
@@ -65,6 +66,7 @@ router.put(
   authorizeRoles(
     ROLES.SUPER_ADMIN,
     ROLES.OPERATIONS_ADMIN,
+    ROLES.GOVERNMENT,
     ROLES.PARTNER
   ),
   updateProductValidator,
@@ -75,6 +77,18 @@ router.put(
 // Marketplace Overview Stats (Admin & Partner)
 router.get(
   '/stats',
+  authenticateToken,
+  authorizeRoles(
+    ROLES.SUPER_ADMIN,
+    ROLES.OPERATIONS_ADMIN,
+    ROLES.FINANCE_ADMIN,
+    ROLES.PARTNER
+  ),
+  getMarketplaceStats
+);
+
+router.get(
+  '/stats/overview',
   authenticateToken,
   authorizeRoles(
     ROLES.SUPER_ADMIN,

@@ -14,6 +14,7 @@ const router = express.Router();
 // 1. Public & Citizen Spatial Queries
 router.get('/layers', queryGisValidator, validateRequest, gisController.getGisLayers);
 router.get('/stats', gisController.getMacroMetrics);
+router.get('/stats/overview', gisController.getMacroMetrics);
 router.post(
   '/analyze-polygon',
   analyzePolygonValidator,
@@ -26,7 +27,7 @@ router.get('/parcel/:landId', authenticateToken, gisController.getParcelSpatialD
 router.post(
   '/layers',
   authenticateToken,
-  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.OPERATIONS_ADMIN, ROLES.GOVERNMENT_OFFICIAL),
+  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.OPERATIONS_ADMIN, ROLES.GOVERNMENT, ROLES.PARTNER),
   createLayerValidator,
   validateRequest,
   gisController.createGisLayer

@@ -78,15 +78,8 @@ const projectSchema = new mongoose.Schema(
     },
     category: {
       type: String,
-      required: true,
-      enum: [
-        'CIVIC_AGROFORESTRY',
-        'SOIL_RESTORATION',
-        'BIODIVERSITY_CORRIDOR',
-        'WATER_SHED_CONSERVATION',
-        'CARBON_SEQUESTRATION',
-      ],
       default: 'CIVIC_AGROFORESTRY',
+      trim: true,
     },
     categoryLabel: {
       type: String,

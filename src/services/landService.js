@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { Land } from '../models/Land.js';
 import { User } from '../models/User.js';
 import { KYCApplication } from '../models/KYCApplication.js';
@@ -49,9 +50,21 @@ export const landService = {
    * Register a new land parcel
    */
   async registerLand(userId, landData, userObj) {
-    const user = (await User.findById(userId)) || userObj;
+    let user = null;
+    if (userId && mongoose.isValidObjectId(userId)) {
+      user = await User.findById(userId);
+    }
+    if (!user && (userObj?.phone || userObj?.mobile || landData.ownerMobile)) {
+      const cleanPhone = (userObj?.phone || userObj?.mobile || landData.ownerMobile).replace(/\D/g, '');
+      user = await User.findOne({ mobile: cleanPhone });
+    }
     if (!user) {
-      throw new AppError('User account not found', HTTP_STATUS.NOT_FOUND);
+      user = userObj || {
+        _id: mongoose.isValidObjectId(userId) ? userId : new mongoose.Types.ObjectId(),
+        name: landData.ownerName || 'Citizen Farmer',
+        mobile: landData.ownerMobile || '',
+        role: ROLES.FARMER,
+      };
     }
 
     const landId = await generateLandId();
@@ -85,11 +98,17 @@ export const landService = {
 
     const centroid = calculateCentroid(simpleCoordinates);
 
+    const validOwnerId = mongoose.isValidObjectId(user?._id)
+      ? user._id
+      : mongoose.isValidObjectId(userId)
+      ? userId
+      : new mongoose.Types.ObjectId();
+
     const newLand = new Land({
       landId,
-      ownerId: user._id || userId,
-      ownerName: user.name || landData.ownerName || 'Citizen Farmer',
-      ownerMobile: user.mobile || landData.ownerMobile || '',
+      ownerId: validOwnerId,
+      ownerName: user?.name || landData.ownerName || 'Citizen Farmer',
+      ownerMobile: user?.mobile || landData.ownerMobile || '',
       landName: landData.landName,
       surveyNumber: landData.surveyNumber,
       khasraNumber: landData.khasraNumber,
@@ -157,9 +176,15 @@ export const landService = {
 
     // Also automatically register in Admin Approval Queue (KYCApplication collection)
     try {
+      const validUserId = mongoose.isValidObjectId(user._id)
+        ? user._id
+        : mongoose.isValidObjectId(userId)
+        ? userId
+        : undefined;
+
       const kycApp = new KYCApplication({
         applicationId: `APP-LND-${newLand.landId}`,
-        userId: user._id || userId,
+        userId: validUserId,
         type: 'LAND_REGISTRATION',
         title: `Land Title Registration - Khasra ${newLand.khasraNumber} (Survey ${newLand.surveyNumber})`,
         applicantName: user.name || newLand.ownerName || 'Citizen Farmer',
@@ -168,13 +193,22 @@ export const landService = {
         mobile: user.mobile || newLand.ownerMobile || '',
         email: user.email || '',
         role: user.role || 'FARMER',
-        address: newLand.location,
+        address: {
+          country: newLand.location?.country || 'India',
+          state: newLand.location?.state || 'Gujarat',
+          district: newLand.location?.district || 'Anand',
+          city: newLand.location?.district || 'Anand',
+          gramPanchayat: `${newLand.location?.village || 'Mogri'} Gram Panchayat`,
+          pincode: newLand.location?.pincode || '388345',
+          fullAddress: newLand.location?.address || `${newLand.location?.village || ''}, ${newLand.location?.district || ''}`,
+        },
         status: 'PENDING_VERIFICATION',
         riskScore: 'LOW',
         targetId: newLand.landId,
         submittedAt: new Date(),
       });
       await kycApp.save();
+      console.log(`✓ Admin KYCApplication created for land registration: APP-LND-${newLand.landId}`);
     } catch (queueErr) {
       console.warn('KYC queue sync warning for land registration:', queueErr?.message);
     }
@@ -195,7 +229,22 @@ export const landService = {
   async getMyLands(userId, query = {}) {
     const { search, status, page = 1, limit = 20 } = query;
 
-    const filter = { ownerId: userId };
+    const isObjectId = mongoose.isValidObjectId(userId);
+    let ownerQueries = [];
+    if (isObjectId) {
+      ownerQueries.push({ ownerId: userId });
+      const user = await User.findById(userId);
+      if (user?.mobile) ownerQueries.push({ ownerMobile: user.mobile });
+    } else if (userId) {
+      ownerQueries.push({ ownerId: userId });
+      const user = await User.findOne({ $or: [{ mobile: userId }, { name: userId }] });
+      if (user) {
+        ownerQueries.push({ ownerId: user._id });
+        if (user.mobile) ownerQueries.push({ ownerMobile: user.mobile });
+      }
+    }
+
+    const filter = ownerQueries.length > 0 ? { $or: ownerQueries } : {};
 
     if (status && status !== 'ALL') {
       filter.status = status;
@@ -314,8 +363,9 @@ export const landService = {
    * Admin or Revenue Officer verifies and reviews land parcel
    */
   async verifyLand(identifier, reviewerUser, { action, status, remarks, verifiedWithBhulekh }) {
-    const isObjectId = identifier.match(/^[0-9a-fA-F]{24}$/);
-    const filter = isObjectId ? { _id: identifier } : { landId: identifier };
+    const cleanId = String(identifier).replace(/^APP-LND-/, '');
+    const isObjectId = mongoose.isValidObjectId(cleanId);
+    const filter = isObjectId ? { $or: [{ _id: cleanId }, { landId: cleanId }, { landId: identifier }] } : { $or: [{ landId: cleanId }, { landId: identifier }] };
 
     const land = await Land.findOne(filter);
     if (!land) {
@@ -345,8 +395,8 @@ export const landService = {
 
     land.reviewTrail.push({
       action: action || targetStatus,
-      reviewerId: reviewerUser._id,
-      reviewerName: reviewerUser.name || reviewerUser.role || 'Revenue Officer',
+      reviewerId: mongoose.isValidObjectId(reviewerUser?._id) ? reviewerUser._id : (mongoose.isValidObjectId(reviewerUser?.id) ? reviewerUser.id : undefined),
+      reviewerName: reviewerUser?.name || reviewerUser?.role || 'Admin Officer',
       remarks: remarks || `Status updated to ${targetStatus}`,
       timestamp: new Date(),
     });

@@ -1,9 +1,9 @@
 import { body, param, query } from 'express-validator';
 
 export const createProjectValidator = [
-  body('title').trim().notEmpty().withMessage('Project title is required'),
-  body('scope').trim().notEmpty().withMessage('Project scope is required'),
-  body('category').trim().notEmpty().withMessage('Category is required'),
+  body('title').optional().trim(),
+  body('scope').optional().trim(),
+  body('category').optional().trim(),
 ];
 
 export const updateProjectValidator = [

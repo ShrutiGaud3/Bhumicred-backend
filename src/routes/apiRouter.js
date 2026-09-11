@@ -13,6 +13,10 @@ import marketplaceRoutes from './marketplaceRoutes.js';
 import projectRoutes from './projectRoutes.js';
 import governmentRoutes from './governmentRoutes.js';
 import schemeRoutes from './schemeRoutes.js';
+import carbonRoutes from './carbonRoutes.js';
+import walletRoutes from './walletRoutes.js';
+import notificationRoutes from './notificationRoutes.js';
+import adminRoutes from './adminRoutes.js';
 
 const apiRouter = express.Router();
 
@@ -50,9 +54,17 @@ apiRouter.use('/projects', projectRoutes);
 apiRouter.use('/government', governmentRoutes);
 apiRouter.use('/schemes', schemeRoutes);
 
-// Phase 12: apiRouter.use('/carbon', carbonRoutes);
-// Phase 13: apiRouter.use('/wallet', walletRoutes);
-// Phase 14: apiRouter.use('/notifications', notificationRoutes);
-// Phase 15: apiRouter.use('/admin', adminRoutes);
+// Phase 12: Sovereign Carbon Registry, Satellite MRV & Green Credits
+apiRouter.use('/carbon', carbonRoutes);
+
+// Phase 13: Sovereign Smart Wallet & Payout Subsystem
+apiRouter.use('/wallet', walletRoutes);
+
+// Phase 14: Sovereign Notifications, Webhooks & Real-Time Alerts Subsystem
+apiRouter.use('/notifications', notificationRoutes);
+apiRouter.use('/support', notificationRoutes);
+
+// Phase 15: System Audit Logs, Global Search & Platform Telemetry
+apiRouter.use('/admin', adminRoutes);
 
 export default apiRouter;

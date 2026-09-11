@@ -20,6 +20,7 @@ router.get('/roles-matrix', authController.getRoleMatrix);
 
 // Protected Authentication Routes
 router.get('/me', authenticateToken, authController.getCurrentUser);
+router.put('/profile', authenticateToken, authController.updateProfile);
 router.post('/logout', authenticateToken, authController.logout);
 
 export default router;

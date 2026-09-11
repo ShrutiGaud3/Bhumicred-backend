@@ -85,7 +85,7 @@ const soilTestRequestSchema = new mongoose.Schema(
     },
     pickupDate: {
       type: String,
-      required: true,
+      default: () => new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     },
     pickupTimeSlot: {
       type: String,

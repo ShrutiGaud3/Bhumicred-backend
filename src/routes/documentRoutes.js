@@ -20,6 +20,7 @@ router.post(
   documentController.uploadDocument
 );
 router.get('/stats', authenticateToken, documentController.getVaultStats);
+router.get('/stats/overview', authenticateToken, documentController.getVaultStats);
 
 // 2. Single Document Operations
 router.get('/:id', authenticateToken, documentController.getDocumentById);

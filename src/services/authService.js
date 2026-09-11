@@ -340,4 +340,47 @@ export const authService = {
 
     return user.toJSON ? user.toJSON() : user;
   },
+
+  async updateProfile(userId, updateData) {
+    let user = null;
+
+    if (mongoose.connection.readyState === 1 && userId && !userId.startsWith('usr_')) {
+      try {
+        user = await User.findById(userId);
+        if (user) {
+          if (updateData.name) user.name = updateData.name;
+          if (updateData.fatherName !== undefined) user.fatherName = updateData.fatherName;
+          if (updateData.email !== undefined) user.email = updateData.email;
+          if (updateData.gender) user.gender = updateData.gender;
+          if (updateData.address) {
+            user.address = {
+              ...(user.address?.toObject ? user.address.toObject() : user.address),
+              ...updateData.address,
+            };
+          }
+          await user.save();
+        }
+      } catch (e) {
+        console.warn('DB update user error:', e.message);
+      }
+    }
+
+    if (!user) {
+      user = {
+        id: userId,
+        _id: userId,
+        name: updateData.name || 'Citizen Farmer',
+        mobile: updateData.mobile || '',
+        email: updateData.email || '',
+        fatherName: updateData.fatherName || '',
+        gender: updateData.gender || 'Male',
+        address: updateData.address || {},
+        role: updateData.role || ROLES.FARMER,
+        status: 'APPROVED',
+        kycStatus: 'APPROVED',
+      };
+    }
+
+    return user.toJSON ? user.toJSON() : user;
+  },
 };

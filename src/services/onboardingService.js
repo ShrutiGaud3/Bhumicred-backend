@@ -146,19 +146,64 @@ export const onboardingService = {
 
     if (mongoose.connection.readyState === 1) {
       try {
-        items = await KYCApplication.find(query).sort({ createdAt: -1 }).limit(100);
+        const kycItems = await KYCApplication.find(query).sort({ createdAt: -1 }).limit(100);
+        items = kycItems.map((it) => (it.toJSON ? it.toJSON() : it));
+
+        // Also query pending Lands from Land collection if filter allows LAND_REGISTRATION
+        if (!filters.type || filters.type === 'ALL' || filters.type === 'LAND_REGISTRATION') {
+          const landStatusQuery = filters.status && filters.status !== 'ALL'
+            ? filters.status
+            : { $in: ['PENDING_VERIFICATION', 'PENDING_REVIEW', 'SUBMITTED'] };
+
+          const landQuery = { status: landStatusQuery };
+          if (filters.search) {
+            const searchRegex = new RegExp(filters.search, 'i');
+            landQuery.$or = [
+              { landName: searchRegex },
+              { khasraNumber: searchRegex },
+              { surveyNumber: searchRegex },
+              { ownerName: searchRegex },
+              { ownerMobile: searchRegex },
+            ];
+          }
+
+          const pendingLands = await Land.find(landQuery).sort({ createdAt: -1 }).limit(50);
+          for (const l of pendingLands) {
+            const existingInKyc = items.some(
+              (it) => it.targetId === l.landId || it.applicationId === `APP-LND-${l.landId}`
+            );
+            if (!existingInKyc) {
+              items.push({
+                _id: l._id,
+                applicationId: `APP-LND-${l.landId}`,
+                userId: l.ownerId,
+                type: 'LAND_REGISTRATION',
+                title: `Land Title Registration - Khasra ${l.khasraNumber || '412/9'} (Survey ${l.surveyNumber || '108/A'})`,
+                applicantName: l.ownerName || 'Citizen Farmer',
+                mobile: l.ownerMobile || '',
+                role: 'FARMER',
+                address: l.location,
+                details: `${l.area || 5} Acres in ${l.location?.village || 'Mogri'}, ${l.location?.district || 'Anand'}`,
+                status: l.status || 'PENDING_VERIFICATION',
+                riskScore: l.riskScore || 'LOW',
+                targetId: l.landId,
+                submittedAt: l.createdAt,
+              });
+            }
+          }
+        }
       } catch (err) {
         console.warn('Error reading admin KYC queue:', err.message);
       }
     }
 
-    return items.map((it) => (it.toJSON ? it.toJSON() : it));
+    return items;
   },
 
   /**
    * Review Application (Approve, Reject, or Query)
    */
-  async reviewApplication(applicationId, { status, reviewNotes, reviewerId, reviewerName }) {
+  async reviewApplication(applicationId, { status, reviewNotes, landData, reviewerId, reviewerName }) {
     if (!['APPROVED', 'REJECTED', 'QUERY_PENDING'].includes(status)) {
       throw new AppError('Status must be APPROVED, REJECTED, or QUERY_PENDING', HTTP_STATUS.BAD_REQUEST);
     }
@@ -194,7 +239,7 @@ export const onboardingService = {
 
           // If this is a Land Registration application, synchronize the Land collection
           if (application.targetId || application.type === 'LAND_REGISTRATION') {
-            const landTarget = application.targetId;
+            const landTarget = application.targetId || application.applicationId?.replace(/^APP-LND-/, '');
             if (landTarget) {
               const isObjectId = mongoose.isValidObjectId(landTarget);
               await Land.findOneAndUpdate(
@@ -214,6 +259,100 @@ export const onboardingService = {
                 }
               );
               console.log(`✓ Synchronized Land parcel ${landTarget} status to: ${status}`);
+            }
+          }
+        } else {
+          // Check if this application corresponds directly to a Land
+          const rawLandId = applicationId?.replace(/^APP-LND-/, '');
+          const isObjectId = mongoose.isValidObjectId(rawLandId);
+          let landDoc = await Land.findOne({
+            $or: [{ landId: rawLandId }, { landId: applicationId }, { _id: isObjectId ? rawLandId : null }],
+          });
+
+          if (landDoc) {
+            landDoc.status = status === 'APPROVED' ? 'APPROVED' : status === 'REJECTED' ? 'REJECTED' : 'QUERY_RAISED';
+            if (status === 'APPROVED') {
+              landDoc.rorVerification = landDoc.rorVerification || {};
+              landDoc.rorVerification.verifiedWithBhulekh = true;
+              landDoc.rorVerification.bhulekhSyncDate = new Date();
+            }
+            landDoc.reviewTrail.push({
+              action: status,
+              reviewerName: reviewerName || 'Admin Officer',
+              remarks: reviewNotes || `Land status updated to ${status}`,
+              timestamp: new Date(),
+            });
+            await landDoc.save();
+            console.log(`✓ Direct Land parcel ${landDoc.landId} reviewed and saved to MongoDB with status: ${status}`);
+
+            application = {
+              applicationId,
+              status,
+              reviewNotes,
+              targetId: landDoc.landId,
+              type: 'LAND_REGISTRATION',
+            };
+          } else if (landData) {
+            // Upsert / Save new approved land parcel directly to MongoDB Atlas!
+            try {
+              let user = null;
+              if (landData.ownerMobile) {
+                user = await User.findOne({ mobile: landData.ownerMobile.replace(/\D/g, '') });
+              }
+              const createdLand = new Land({
+                landId: landData.id || landData.landId || rawLandId || `LND-${Math.floor(10000 + Math.random() * 90000)}`,
+                ownerId: user?._id || new mongoose.Types.ObjectId(),
+                ownerName: landData.ownerName || user?.name || 'Citizen Farmer',
+                ownerMobile: landData.ownerMobile || user?.mobile || '',
+                landName: landData.landName || 'Registered Agricultural Plot',
+                surveyNumber: landData.surveyNumber || '108/A',
+                khasraNumber: landData.khasraNumber || '412/9',
+                landType: landData.landType || 'Agricultural (Irrigated)',
+                ownershipType: landData.ownershipType || 'Individual Owner',
+                area: Number(landData.area || landData.areaAcres || 5),
+                areaUnit: landData.areaUnit || 'Acres',
+                location: {
+                  country: 'India',
+                  state: landData.state || 'Gujarat',
+                  district: landData.district || 'Anand',
+                  village: landData.village || 'Mogri',
+                  address: landData.address || `${landData.village || ''}, ${landData.district || 'Anand'}`,
+                },
+                agronomicDetails: {
+                  soilType: landData.soilType || 'Alluvial Loam',
+                  irrigationSource: landData.irrigationSource || 'Borewell & Drip Irrigation',
+                  treeCount: Number(landData.treeCount || 0),
+                  treesInsured: Boolean(landData.treesInsured),
+                  soilReportStatus: 'NOT_REQUESTED',
+                },
+                rorVerification: {
+                  statePortal: 'AnyRoR Gujarat',
+                  verifiedWithBhulekh: status === 'APPROVED',
+                  bhulekhSyncDate: status === 'APPROVED' ? new Date() : null,
+                },
+                status: status === 'APPROVED' ? 'APPROVED' : status === 'REJECTED' ? 'REJECTED' : 'QUERY_RAISED',
+                riskScore: 'LOW',
+                reviewTrail: [
+                  {
+                    action: status === 'APPROVED' ? 'APPROVED' : status === 'REJECTED' ? 'REJECTED' : 'QUERY_RAISED',
+                    reviewerName: reviewerName || 'Admin Officer',
+                    remarks: reviewNotes || `Land approved and saved in MongoDB Database by Admin`,
+                    timestamp: new Date(),
+                  },
+                ],
+              });
+              await createdLand.save();
+              console.log(`✓ Created and Approved Land parcel ${createdLand.landId} in MongoDB Atlas Database!`);
+
+              application = {
+                applicationId,
+                status,
+                reviewNotes,
+                targetId: createdLand.landId,
+                type: 'LAND_REGISTRATION',
+              };
+            } catch (createErr) {
+              console.warn('Error persisting approved land to database:', createErr?.message);
             }
           }
         }

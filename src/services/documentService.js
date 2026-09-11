@@ -71,12 +71,27 @@ export const documentService = {
     const seed = `${user.id}-${title}-${fileName}-${Date.now()}`;
     const sha256Hash = crypto.createHash('sha256').update(seed).digest('hex');
 
-    // If landId provided, verify land exists
+    // If landId provided, verify land exists (support ObjectId or string landId)
+    let resolvedLandId = undefined;
     if (landId) {
-      const land = await Land.findById(landId);
-      if (!land) {
-        throw new AppError('Referenced Land Parcel not found', 404);
+      let land = null;
+      if (mongoose.Types.ObjectId.isValid(landId)) {
+        land = await Land.findById(landId);
       }
+      if (!land) {
+        land = await Land.findOne({
+          $or: [
+            { landId: landId },
+            { applicationId: landId },
+            { surveyNumber: landId },
+            { khasraNumber: landId },
+          ],
+        });
+      }
+      if (!land) {
+        throw new AppError(`Referenced Land Parcel not found with ID/Code: ${landId}`, 404);
+      }
+      resolvedLandId = land._id;
     }
 
     const newDoc = await Document.create({
@@ -84,7 +99,7 @@ export const documentService = {
       userName: user.fullName || user.name || 'Citizen Applicant',
       userRole: user.role || 'FARMER',
       userMobile: user.mobile || user.phone || '',
-      landId: landId || undefined,
+      landId: resolvedLandId,
       title,
       category,
       documentType,

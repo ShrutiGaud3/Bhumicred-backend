@@ -45,6 +45,7 @@ export const onboardingController = {
       const result = await onboardingService.reviewApplication(req.params.id, {
         status: req.body.status,
         reviewNotes: req.body.reviewNotes,
+        landData: req.body.landData,
         reviewerId: req.user?.id,
         reviewerName: req.user?.name || 'Super Admin Officer',
       });

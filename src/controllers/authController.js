@@ -57,6 +57,11 @@ export const authController = {
     return sendSuccess(res, 'Current user profile retrieved', user);
   }),
 
+  updateProfile: asyncHandler(async (req, res) => {
+    const updatedUser = await authService.updateProfile(req.user.id || req.user._id, req.body);
+    return sendSuccess(res, 'User profile updated successfully', updatedUser);
+  }),
+
   logout: asyncHandler(async (req, res) => {
     res.clearCookie('token');
     return sendSuccess(res, 'Logged out successfully');

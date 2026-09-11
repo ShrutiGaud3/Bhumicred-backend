@@ -339,7 +339,22 @@ export const gisService = {
    * Ingest or create a new GIS Layer
    */
   createGisLayer: async (layerData) => {
-    const newLayer = await GisLayer.create(layerData);
+    const name = layerData.name || layerData.layerName || layerData.title || 'Cadastral Layer';
+    const district = layerData.district || 'Anand';
+    const geoJson = layerData.geoJson || (layerData.features ? { type: 'FeatureCollection', features: layerData.features } : { type: 'FeatureCollection', features: [] });
+    
+    let category = layerData.category || layerData.layerType || 'CADASTRAL_GRID';
+    if (category === 'CADASTRAL_BOUNDARY' || category.includes('CADASTRAL')) category = 'CADASTRAL_GRID';
+    else if (category.includes('FOREST')) category = 'FOREST_ASSET';
+    else if (category.includes('WATER') || category.includes('CANAL')) category = 'WATER_CANAL';
+
+    const newLayer = await GisLayer.create({
+      ...layerData,
+      name,
+      district,
+      category,
+      geoJson,
+    });
     return newLayer;
   },
 };

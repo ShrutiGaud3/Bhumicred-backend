@@ -23,6 +23,7 @@ const router = express.Router();
 // Public / Authenticated Project Discovery
 router.get('/', getProjects);
 router.get('/stats', getProjectStats);
+router.get('/stats/overview', getProjectStats);
 router.get('/:id', getProjectById);
 
 // Farmer Enrollment Route
@@ -63,7 +64,7 @@ router.put(
   updateProject
 );
 
-// Milestone verification & progress tracking
+// Milestone verification & progress tracking (Supports /milestone/:index and /milestones/:index)
 router.patch(
   '/:id/milestones/:milestoneIndex',
   authenticateToken,
@@ -75,6 +76,44 @@ router.patch(
   ),
   updateMilestoneValidator,
   validateRequest,
+  updateMilestone
+);
+
+router.patch(
+  '/:id/milestone/:milestoneIndex',
+  authenticateToken,
+  authorizeRoles(
+    ROLES.SUPER_ADMIN,
+    ROLES.PROJECT_ADMIN,
+    ROLES.GOVERNMENT,
+    ROLES.PARTNER
+  ),
+  updateMilestoneValidator,
+  validateRequest,
+  updateMilestone
+);
+
+router.patch(
+  '/:id/milestones',
+  authenticateToken,
+  authorizeRoles(
+    ROLES.SUPER_ADMIN,
+    ROLES.PROJECT_ADMIN,
+    ROLES.GOVERNMENT,
+    ROLES.PARTNER
+  ),
+  updateMilestone
+);
+
+router.patch(
+  '/:id/milestone',
+  authenticateToken,
+  authorizeRoles(
+    ROLES.SUPER_ADMIN,
+    ROLES.PROJECT_ADMIN,
+    ROLES.GOVERNMENT,
+    ROLES.PARTNER
+  ),
   updateMilestone
 );
 

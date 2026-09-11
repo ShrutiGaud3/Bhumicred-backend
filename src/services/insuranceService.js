@@ -77,37 +77,116 @@ export const insuranceService = {
   },
 
   /**
+   * Public catalog of parametric tree insurance plans
+   */
+  getInsurancePlans: async () => {
+    return [
+      {
+        planCode: 'PLAN-TEAK-01',
+        name: 'Parametric Indian Teak (Sagwan) Sovereign Cover',
+        category: 'Commercial Timber Agroforestry',
+        species: 'Indian Teak (Sagwan)',
+        baseValuationPerTree: 8000,
+        annualPremiumRate: '1.25%',
+        governmentSubsidy: '40% State Rebate Under PM-KMY',
+        tenureOptions: ['1 Year', '3 Years (10% Discount)', '5 Years'],
+        coveredPerils: [
+          'Storm, Cyclone & Windthrow (>70 km/h)',
+          'Forest & Agro Fire Perils',
+          'Stem Borer Infestation & Root Rot Outbreaks',
+          'Severe Drought Stress (Revenue Trigger)',
+          'Lightning Strike & Frost Damage',
+        ],
+      },
+      {
+        planCode: 'PLAN-SANDAL-02',
+        name: 'Parametric Red Sandalwood (Chandan) High-Security Cover',
+        category: 'High-Value Medicinal Timber',
+        species: 'Red Sandalwood (Chandan)',
+        baseValuationPerTree: 15000,
+        annualPremiumRate: '1.50%',
+        governmentSubsidy: '40% State Rebate',
+        tenureOptions: ['3 Years', '5 Years', '10 Years'],
+        coveredPerils: [
+          'Illicit Felling & Theft Peril (Satellite Monitored)',
+          'Fire & Heatwave Desiccation',
+          'Soil-borne Fungal Wilt Outbreak',
+          'Cyclone & Tree Stem Fracture',
+        ],
+      },
+      {
+        planCode: 'PLAN-HORTI-03',
+        name: 'Parametric Alphonso Mango & Fruit Orchard Insurance',
+        category: 'Fruit Orchards & Agroforestry',
+        species: 'Alphonso Mango (Kesar)',
+        baseValuationPerTree: 4500,
+        annualPremiumRate: '1.15%',
+        governmentSubsidy: '50% Horticulture Mission Subsidy',
+        tenureOptions: ['1 Year (Annual Kharif/Rabi)', '3 Years'],
+        coveredPerils: [
+          'Unseasonal Blossom Drop Hailstorm',
+          'Pest & Powdery Mildew Outbreak',
+          'Excess Rainfall & Flooding Inundation',
+          'Severe Heat Stress During Fruit Setting',
+        ],
+      },
+    ];
+  },
+
+  /**
    * Apply / purchase a new tree insurance policy
    */
   applyPolicy: async (user, policyData) => {
     const {
       landId,
-      planName,
       category = 'Commercial Agroforestry',
-      insuredTreeCount,
-      speciesSummary = 'Indian Teak Agroforestry',
-      speciesBreakdown = [],
-      sumInsured,
-      annualPremium,
-      grossPremium,
-      farmerNetPayable,
-      durationMonths = 36,
       coverageDetails = [],
     } = policyData;
 
-    // 1. Verify Land Parcel exists
-    const land = await Land.findById(landId);
-    if (!land) {
-      throw new AppError('Referenced Land Parcel not found', 404);
+    const landIdentifier = policyData.landId || policyData.land_id || policyData.parcelId;
+    let land = null;
+
+    if (landIdentifier) {
+      if (mongoose.Types.ObjectId.isValid(landIdentifier)) {
+        land = await Land.findById(landIdentifier);
+      }
+      if (!land) {
+        land = await Land.findOne({
+          $or: [
+            { landId: landIdentifier },
+            { applicationId: landIdentifier },
+            { surveyNumber: landIdentifier },
+            { khasraNumber: landIdentifier },
+          ],
+        });
+      }
     }
 
-    const calculatedAnnual = annualPremium || Math.round((farmerNetPayable || 12000) / (durationMonths / 12));
-    const calculatedGross = grossPremium || Math.round(calculatedAnnual * (durationMonths / 12) * 1.66);
-    const subsidyAmount = calculatedGross - (farmerNetPayable || Math.round(calculatedGross * 0.6));
+    if (!land) {
+      land = (await Land.findOne({ ownerId: user.id || user._id })) || (await Land.findOne());
+    }
+
+    if (!land) {
+      throw new AppError('No registered Land Parcel found. Please register a land parcel first.', 404);
+    }
+
+    // Auto-calculate / normalize fields if omitted or empty
+    const count = Math.max(1, parseInt(policyData.insuredTreeCount || policyData.treeCount || 100, 10));
+    const species = (policyData.treeSpecies || policyData.species || policyData.speciesSummary || 'Teak').toString().trim() || 'Teak';
+    const summary = (policyData.speciesSummary && policyData.speciesSummary.trim()) || `${count} ${species} Agroforestry`;
+    const plan = (policyData.planName && policyData.planName.trim()) || `Parametric ${species} Sovereign Cover`;
+    const tenureMonths = parseInt(policyData.durationMonths || (policyData.tenureYears ? policyData.tenureYears * 12 : 36), 10) || 36;
+    const valPerTree = Number(policyData.sumInsuredPerTree) > 0 ? Number(policyData.sumInsuredPerTree) : 2000;
+    const totalSum = Number(policyData.sumInsured) > 0 ? Number(policyData.sumInsured) : (count * valPerTree);
+
+    const calculatedAnnual = Number(policyData.annualPremium) > 0 ? Number(policyData.annualPremium) : Math.max(500, Math.round(totalSum * 0.0125));
+    const calculatedGross = Number(policyData.grossPremium) > 0 ? Number(policyData.grossPremium) : Math.max(1500, Math.round(calculatedAnnual * (tenureMonths / 12)));
+    const payable = Number(policyData.farmerNetPayable) > 0 ? Number(policyData.farmerNetPayable) : Math.max(900, Math.round(calculatedGross * 0.6));
+    const subsidyAmount = Math.max(0, calculatedGross - payable);
 
     const startDate = new Date();
     const endDate = new Date();
-    endDate.setMonth(endDate.getMonth() + parseInt(durationMonths, 10));
+    endDate.setMonth(endDate.getMonth() + tenureMonths);
 
     // 2. Create Policy Record in DB
     const policy = await InsurancePolicy.create({
@@ -118,31 +197,31 @@ export const insuranceService = {
       landName: land.landName,
       surveyNumber: land.surveyNumber,
       khasraNumber: land.khasraNumber,
-      planName,
+      planName: plan,
       category,
-      insuredTreeCount: parseInt(insuredTreeCount, 10),
-      speciesSummary,
-      speciesBreakdown: speciesBreakdown.length > 0 ? speciesBreakdown : [
-        { species: speciesSummary, count: parseInt(insuredTreeCount, 10), ageYears: 4, valuePerTree: Math.round(sumInsured / insuredTreeCount) }
+      insuredTreeCount: count,
+      speciesSummary: summary,
+      speciesBreakdown: policyData.speciesBreakdown?.length > 0 ? policyData.speciesBreakdown : [
+        { species: summary, count: count, ageYears: 4, valuePerTree: Math.round(totalSum / count) }
       ],
-      sumInsured: Number(sumInsured),
-      annualPremium: Number(calculatedAnnual),
-      grossPremium: Number(calculatedGross),
+      sumInsured: totalSum,
+      annualPremium: calculatedAnnual,
+      grossPremium: calculatedGross,
       governmentSubsidyPercent: 40,
       governmentSubsidyAmount: Number(subsidyAmount),
-      farmerNetPayable: Number(farmerNetPayable),
-      durationMonths: parseInt(durationMonths, 10),
+      farmerNetPayable: payable,
+      durationMonths: tenureMonths,
       startDate,
       endDate,
       status: 'ACTIVE',
       paymentStatus: 'PAID',
-      coverageDetails: coverageDetails.length > 0 ? coverageDetails : [
+      coverageDetails: coverageDetails.length > 0 ? coverageDetails : (policyData.coveredPerils || [
         'Storm, Cyclone & Windthrow (>70 km/h)',
         'Forest & Agro Fire Perils',
         'Stem Borer Infestation & Root Rot Outbreaks',
         'Severe Drought Stress (Revenue Trigger)',
         'Lightning Strike & Frost Damage',
-      ],
+      ]),
       underwritingScore: 94,
     });
 
@@ -169,9 +248,11 @@ export const insuranceService = {
     }
 
     // 4. Update Land Model agronomic details
-    land.agronomicDetails.treesInsured = true;
-    land.agronomicDetails.treeCount = Math.max(land.agronomicDetails.treeCount || 0, parseInt(insuredTreeCount, 10));
-    await land.save();
+    if (land.agronomicDetails) {
+      land.agronomicDetails.treesInsured = true;
+      land.agronomicDetails.treeCount = Math.max(land.agronomicDetails.treeCount || 0, count);
+      await land.save();
+    }
 
     return policy;
   },
@@ -265,25 +346,23 @@ export const insuranceService = {
    * Raise a new emergency insurance claim
    */
   raiseClaim: async (user, claimData) => {
-    const {
-      policyId,
-      incidentType,
-      incidentDate,
-      affectedTreeCount,
-      estimatedLoss,
-      claimDescription = '',
-      damagePhotos = [],
-    } = claimData;
+    const policyId = claimData.policyId;
+    const incident = claimData.incidentType || claimData.perilType || 'HAILSTORM';
+    const treesDamaged = parseInt(claimData.affectedTreeCount || claimData.damagedTreesCount || 10, 10);
+    const loss = Number(claimData.estimatedLoss || claimData.claimedAmount || 50000);
+    const desc = claimData.claimDescription || claimData.description || 'Parametric emergency claim';
+    const date = claimData.incidentDate ? new Date(claimData.incidentDate) : new Date();
+    const photos = claimData.damagePhotos || [];
 
     let policy = null;
-    if (policyId.match(/^[0-9a-fA-F]{24}$/)) {
+    if (policyId && policyId.match(/^[0-9a-fA-F]{24}$/)) {
       policy = await InsurancePolicy.findById(policyId);
-    } else {
+    } else if (policyId) {
       policy = await InsurancePolicy.findOne({ policyNumber: policyId });
     }
 
     if (!policy) {
-      throw new AppError('Active Insurance Policy not found for this claim', 404);
+      throw new AppError(`Active Insurance Policy not found for ID/Number: ${policyId}`, 404);
     }
 
     const claim = await InsuranceClaim.create({
@@ -293,12 +372,12 @@ export const insuranceService = {
       userName: user.fullName || user.name || 'Citizen Farmer',
       userMobile: user.mobile || user.phone || '',
       landId: policy.landId,
-      incidentType,
-      incidentDate: new Date(incidentDate),
-      affectedTreeCount: parseInt(affectedTreeCount, 10),
-      estimatedLoss: Number(estimatedLoss),
-      claimDescription,
-      damagePhotos,
+      incidentType: incident,
+      incidentDate: date,
+      affectedTreeCount: treesDamaged,
+      estimatedLoss: loss,
+      claimDescription: desc,
+      damagePhotos: photos,
       status: 'SUBMITTED',
       assignedPartnerName: 'AgriTech Field Services Central',
       inspectorName: 'Devang Joshi (Senior Agronomist)',

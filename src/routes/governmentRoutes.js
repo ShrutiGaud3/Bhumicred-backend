@@ -24,6 +24,12 @@ router.get(
   authorizeRoles(ROLES.GOVERNMENT, ROLES.SUPER_ADMIN, ROLES.FINANCE_ADMIN),
   getGovernmentDashboardStats
 );
+router.get(
+  '/stats/overview',
+  authenticateToken,
+  authorizeRoles(ROLES.GOVERNMENT, ROLES.SUPER_ADMIN, ROLES.FINANCE_ADMIN),
+  getGovernmentDashboardStats
+);
 
 // Public Green Assets & Cadastre
 router.get(

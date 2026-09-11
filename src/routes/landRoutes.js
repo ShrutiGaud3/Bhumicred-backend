@@ -16,6 +16,8 @@ const router = express.Router();
 router.post('/', authenticateToken, registerLandValidator, validateRequest, landController.registerLand);
 router.get('/my', authenticateToken, queryLandValidator, validateRequest, landController.getMyLands);
 router.get('/stats/gis', authenticateToken, landController.getGisStats);
+router.get('/stats', authenticateToken, landController.getGisStats);
+router.get('/stats/overview', authenticateToken, landController.getGisStats);
 
 // 2. Administrative / Cadastral Inspection Endpoints (All Lands)
 router.get(
@@ -28,7 +30,8 @@ router.get(
     ROLES.ADMIN_STAFF,
     ROLES.GOVERNMENT_OFFICIAL,
     ROLES.FIELD_AGENT,
-    ROLES.INSURANCE_OFFICER
+    ROLES.INSURANCE_OFFICER,
+    ROLES.FARMER
   ),
   queryLandValidator,
   validateRequest,

@@ -65,9 +65,16 @@ export const enrollLandInProject = async (req, res, next) => {
 
 export const updateMilestone = async (req, res, next) => {
   try {
+    const milestoneIndex =
+      req.params.milestoneIndex !== undefined
+        ? Number(req.params.milestoneIndex)
+        : req.body.milestoneIndex !== undefined
+        ? Number(req.body.milestoneIndex)
+        : 0;
+
     const project = await projectService.updateMilestone(
       req.params.id,
-      Number(req.params.milestoneIndex),
+      milestoneIndex,
       req.user,
       req.body
     );

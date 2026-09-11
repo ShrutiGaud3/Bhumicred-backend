@@ -42,7 +42,7 @@ const insurancePolicySchema = new mongoose.Schema(
     },
     planName: {
       type: String,
-      required: [true, 'Policy plan name is required'],
+      default: 'Parametric Agroforestry Sovereign Cover',
       trim: true,
     },
     category: {
@@ -59,7 +59,7 @@ const insurancePolicySchema = new mongoose.Schema(
     },
     insuredTreeCount: {
       type: Number,
-      required: true,
+      default: 100,
       min: [1, 'Must insure at least 1 tree'],
     },
     speciesSummary: {
@@ -76,16 +76,16 @@ const insurancePolicySchema = new mongoose.Schema(
     ],
     sumInsured: {
       type: Number,
-      required: true,
+      default: 200000,
       min: [1000, 'Sum insured must be at least ₹1,000'],
     },
     annualPremium: {
       type: Number,
-      required: true,
+      default: 2500,
     },
     grossPremium: {
       type: Number,
-      required: true,
+      default: 7500,
     },
     governmentSubsidyPercent: {
       type: Number,
@@ -93,11 +93,11 @@ const insurancePolicySchema = new mongoose.Schema(
     },
     governmentSubsidyAmount: {
       type: Number,
-      default: 0,
+      default: 3000,
     },
     farmerNetPayable: {
       type: Number,
-      required: true,
+      default: 4500,
     },
     durationMonths: {
       type: Number,

@@ -7,21 +7,12 @@ export const analyzePolygonValidator = [
 ];
 
 export const createLayerValidator = [
-  body('name').trim().notEmpty().withMessage('Layer name is required'),
-  body('district').trim().notEmpty().withMessage('District is required'),
-  body('category')
-    .optional()
-    .isIn([
-      'CADASTRAL_GRID',
-      'FOREST_ASSET',
-      'WATER_CANAL',
-      'NDVI_VEGETATION',
-      'SOIL_FERTILITY_ZONE',
-      'DROUGHT_RISK_MAP',
-      'COMMUNITY_LAND',
-    ])
-    .withMessage('Invalid GIS layer category'),
-  body('geoJson').optional().isObject(),
+  body().custom((body) => {
+    if (!body.name && !body.layerName && !body.title) {
+      throw new Error('Layer name is required (use "name" or "layerName")');
+    }
+    return true;
+  }),
 ];
 
 export const queryGisValidator = [

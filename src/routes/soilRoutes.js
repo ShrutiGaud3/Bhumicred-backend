@@ -16,12 +16,16 @@ router.use(authenticateToken);
 
 // Soil Health & Testing Metrics
 router.get('/stats', soilController.getSoilStats);
+router.get('/stats/overview', soilController.getSoilStats);
 
-// Soil Test Requests & Reports
+// Soil Test Requests & Reports (Supports /requests and /tests)
 router.get('/requests', soilController.getUserSoilTests);
+router.get('/tests', soilController.getUserSoilTests);
 router.post('/requests', validateBookSoilTest, validateRequest, soilController.bookSoilTest);
+router.post('/tests', validateBookSoilTest, validateRequest, soilController.bookSoilTest);
 router.post('/book', validateBookSoilTest, validateRequest, soilController.bookSoilTest);
 router.get('/requests/:id', soilController.getSoilTestById);
+router.get('/tests/:id', soilController.getSoilTestById);
 router.patch(
   '/requests/:id/report',
   authorizeRoles(
@@ -35,20 +39,30 @@ router.patch(
   soilController.updateSoilTestReport
 );
 
-// Mobile Soil Testing Van Dispatches (District Level)
+// Mobile Soil Testing Van Dispatches (District Level - Government & Super Admin only)
 router.post(
   '/dispatch-van',
   authorizeRoles(
-    ROLES.SUPER_ADMIN,
-    ROLES.OPERATIONS_ADMIN,
     ROLES.GOVERNMENT,
-    ROLES.PARTNER,
-    ROLES.FARMER
+    ROLES.SUPER_ADMIN,
+    ROLES.OPERATIONS_ADMIN
+  ),
+  validateDispatchVan,
+  validateRequest,
+  soilController.dispatchMobileVan
+);
+router.post(
+  '/vans',
+  authorizeRoles(
+    ROLES.GOVERNMENT,
+    ROLES.SUPER_ADMIN,
+    ROLES.OPERATIONS_ADMIN
   ),
   validateDispatchVan,
   validateRequest,
   soilController.dispatchMobileVan
 );
 router.get('/dispatches', soilController.getMobileVanDispatches);
+router.get('/vans', soilController.getMobileVanDispatches);
 
 export default router;

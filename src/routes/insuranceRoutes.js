@@ -15,6 +15,8 @@ const router = express.Router();
 // 1. Live Parametric Quote Calculator (Public / Citizen)
 router.post('/quote', calculateQuoteValidator, validateRequest, insuranceController.calculateQuote);
 router.get('/stats', authenticateToken, insuranceController.getInsuranceStats);
+router.get('/stats/overview', authenticateToken, insuranceController.getInsuranceStats);
+router.get('/plans', insuranceController.getInsurancePlans);
 
 // 2. Policies CRUD
 router.get('/policies', authenticateToken, insuranceController.getUserPolicies);
