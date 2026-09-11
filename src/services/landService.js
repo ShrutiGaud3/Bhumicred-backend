@@ -244,7 +244,20 @@ export const landService = {
       }
     }
 
-    const filter = ownerQueries.length > 0 ? { $or: ownerQueries } : {};
+    // If no owner match found for the logged-in user, return empty results
+    if (ownerQueries.length === 0) {
+      return {
+        lands: [],
+        pagination: {
+          total: 0,
+          page: parseInt(page, 10) || 1,
+          limit: parseInt(limit, 10) || 20,
+          pages: 0,
+        },
+      };
+    }
+
+    const filter = { $or: ownerQueries };
 
     if (status && status !== 'ALL') {
       filter.status = status;
