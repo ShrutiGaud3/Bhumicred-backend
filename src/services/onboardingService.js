@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { KYCApplication } from '../models/KYCApplication.js';
 import { User } from '../models/User.js';
 import { Land } from '../models/Land.js';
+import { InsuranceClaim } from '../models/InsuranceClaim.js';
 import { AppError } from '../utils/appError.js';
 import { HTTP_STATUS } from '../constants/httpStatus.js';
 import { ROLES, ROLE_PERMISSIONS } from '../constants/roles.js';
@@ -192,6 +193,37 @@ export const onboardingService = {
             }
           }
         }
+
+        // Also query pending Insurance Claims if filter allows INSURANCE_CLAIM
+        if (!filters.type || filters.type === 'ALL' || filters.type === 'INSURANCE_CLAIM') {
+          const claimStatusQuery = filters.status && filters.status !== 'ALL'
+            ? filters.status
+            : { $in: ['SUBMITTED', 'UNDER_REVIEW', 'PENDING_VERIFICATION', 'INSPECTION_SCHEDULED'] };
+
+          const pendingClaims = await InsuranceClaim.find({ status: claimStatusQuery }).sort({ createdAt: -1 }).limit(50);
+          for (const c of pendingClaims) {
+            const existingInQueue = items.some(
+              (it) => it.targetId === c._id.toString() || it.applicationId === `APP-CLM-${c.claimNumber}` || it.id === c.claimNumber
+            );
+            if (!existingInQueue) {
+              items.push({
+                _id: c._id,
+                applicationId: `APP-CLM-${c.claimNumber}`,
+                userId: c.userId,
+                type: 'INSURANCE_CLAIM',
+                title: `Tree Loss Insurance Claim - ${c.incidentType} (${c.affectedTreeCount} Trees)`,
+                applicantName: c.userName || 'Insured Farmer',
+                mobile: c.userMobile || '',
+                role: 'FARMER',
+                details: `Policy: ${c.policyNumber} • Estimated Loss: ₹${(Number(c.estimatedLoss) || 0).toLocaleString('en-IN')}`,
+                status: c.status === 'SUBMITTED' ? 'PENDING_VERIFICATION' : c.status,
+                riskScore: 'LOW',
+                targetId: c.claimNumber || c._id.toString(),
+                submittedAt: c.createdAt || c.incidentDate,
+              });
+            }
+          }
+        }
       } catch (err) {
         console.warn('Error reading admin KYC queue:', err.message);
       }
@@ -212,9 +244,21 @@ export const onboardingService = {
 
     if (mongoose.connection.readyState === 1) {
       try {
+        const cleanMobileFromId = String(applicationId || '').replace(/\D/g, '');
+        const isAppObjectId = mongoose.isValidObjectId(applicationId);
+
+        // Find application by ID, appId, mobile, or targetId
         application = await KYCApplication.findOne({
-          $or: [{ applicationId }, { _id: mongoose.isValidObjectId(applicationId) ? applicationId : null }],
+          $or: [
+            { applicationId },
+            { _id: isAppObjectId ? applicationId : null },
+            ...(cleanMobileFromId.length >= 10 ? [{ mobile: cleanMobileFromId }, { mobile: `+91${cleanMobileFromId}` }] : []),
+            { targetId: applicationId },
+          ],
         });
+
+        const userStatus = status === 'APPROVED' ? 'APPROVED' : status === 'REJECTED' ? 'REJECTED' : 'QUERY_PENDING';
+        const userKycStatus = status === 'APPROVED' ? 'APPROVED' : 'PENDING_VERIFICATION';
 
         if (application) {
           application.status = status;
@@ -225,25 +269,29 @@ export const onboardingService = {
           await application.save();
 
           // Synchronize User Model Status!
-          const userStatus = status === 'APPROVED' ? 'APPROVED' : status === 'REJECTED' ? 'REJECTED' : 'QUERY_PENDING';
-          const userKycStatus = status === 'APPROVED' ? 'APPROVED' : 'PENDING_VERIFICATION';
-
           await User.findOneAndUpdate(
-            { $or: [{ mobile: application.mobile }, { _id: application.userId }, { applicationId: application.applicationId }] },
+            {
+              $or: [
+                { mobile: application.mobile },
+                { mobile: cleanMobileFromId },
+                { _id: application.userId },
+                { applicationId: application.applicationId },
+              ],
+            },
             {
               status: userStatus,
               kycStatus: userKycStatus,
             }
           );
-          console.log(`✓ Synchronized User status for application ${application.applicationId} to: ${userStatus}`);
+          console.log(`✓ Synchronized User & KYC status for application ${application.applicationId} to: ${userStatus}`);
 
           // If this is a Land Registration application, synchronize the Land collection
           if (application.targetId || application.type === 'LAND_REGISTRATION') {
             const landTarget = application.targetId || application.applicationId?.replace(/^APP-LND-/, '');
             if (landTarget) {
-              const isObjectId = mongoose.isValidObjectId(landTarget);
+              const isLandObjectId = mongoose.isValidObjectId(landTarget);
               await Land.findOneAndUpdate(
-                { $or: [{ landId: landTarget }, { _id: isObjectId ? landTarget : null }] },
+                { $or: [{ landId: landTarget }, { _id: isLandObjectId ? landTarget : null }] },
                 {
                   status: status === 'APPROVED' ? 'APPROVED' : status === 'REJECTED' ? 'REJECTED' : 'QUERY_RAISED',
                   'rorVerification.verifiedWithBhulekh': status === 'APPROVED',
@@ -262,11 +310,51 @@ export const onboardingService = {
             }
           }
         } else {
+          // If no direct KYCApplication document found, check if a User matches this ID/mobile
+          const userDoc = await User.findOne({
+            $or: [
+              { applicationId },
+              { _id: isAppObjectId ? applicationId : null },
+              ...(cleanMobileFromId.length >= 10 ? [{ mobile: cleanMobileFromId }, { mobile: `+91${cleanMobileFromId}` }] : []),
+            ],
+          });
+
+          if (userDoc) {
+            userDoc.status = userStatus;
+            userDoc.kycStatus = userKycStatus;
+            await userDoc.save();
+
+            // Create or update KYC application record so it shows as approved in MongoDB queries
+            application = await KYCApplication.findOneAndUpdate(
+              {
+                $or: [
+                  { userId: userDoc._id },
+                  { mobile: userDoc.mobile },
+                  { applicationId: userDoc.applicationId || applicationId },
+                ],
+              },
+              {
+                applicationId: userDoc.applicationId || applicationId,
+                userId: userDoc._id,
+                type: userDoc.role === 'PARTNER' ? 'PARTNER_ONBOARDING' : userDoc.role === 'GOVERNMENT' ? 'GOVERNMENT_ONBOARDING' : 'FARMER_KYC',
+                title: `${userDoc.role || 'Citizen'} Verification - ${userDoc.name}`,
+                applicantName: userDoc.name,
+                mobile: userDoc.mobile,
+                role: userDoc.role,
+                status,
+                reviewNotes: reviewNotes || '',
+                reviewedByName: reviewerName || 'Admin Officer',
+                reviewedAt: new Date(),
+              },
+              { upsert: true, new: true }
+            );
+            console.log(`✓ Synchronized User ${userDoc.name} (${userDoc.mobile}) to status: ${userStatus}`);
+          }
           // Check if this application corresponds directly to a Land
           const rawLandId = applicationId?.replace(/^APP-LND-/, '');
-          const isObjectId = mongoose.isValidObjectId(rawLandId);
+          const isLandDocObjectId = mongoose.isValidObjectId(rawLandId);
           let landDoc = await Land.findOne({
-            $or: [{ landId: rawLandId }, { landId: applicationId }, { _id: isObjectId ? rawLandId : null }],
+            $or: [{ landId: rawLandId }, { landId: applicationId }, { _id: isLandDocObjectId ? rawLandId : null }],
           });
 
           if (landDoc) {
@@ -292,7 +380,51 @@ export const onboardingService = {
               targetId: landDoc.landId,
               type: 'LAND_REGISTRATION',
             };
-          } else if (landData) {
+          }
+
+          // Check if this application corresponds to an Insurance Claim
+          const rawClaimId = applicationId?.replace(/^APP-CLM-/, '');
+          const isClaimObjectId = mongoose.isValidObjectId(rawClaimId);
+          let claimDoc = await InsuranceClaim.findOne({
+            $or: [{ claimNumber: rawClaimId }, { claimNumber: applicationId }, { _id: isClaimObjectId ? rawClaimId : null }],
+          });
+
+          if (claimDoc) {
+            const claimStatus = status === 'APPROVED' ? 'SETTLED' : status === 'REJECTED' ? 'REJECTED' : 'UNDER_REVIEW';
+            claimDoc.status = claimStatus;
+            const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+            if (claimStatus === 'SETTLED') {
+              claimDoc.approvedPayoutAmount = claimDoc.estimatedLoss;
+              claimDoc.settlementDetails = {
+                creditedToWallet: true,
+                settledAt: new Date(),
+                payoutTxnId: `TXN-CLAIM-${Math.floor(100000 + Math.random() * 900000)}`,
+              };
+              claimDoc.timeline.push({
+                title: 'Settlement Decision',
+                timestamp: today,
+                completed: true,
+                remarks: reviewNotes || 'Claim DBT payout authorized by Super Admin',
+              });
+            } else if (claimStatus === 'REJECTED') {
+              claimDoc.timeline.push({
+                title: 'Claim Rejected',
+                timestamp: today,
+                completed: true,
+                remarks: reviewNotes || 'Claim rejected by Super Admin Desk',
+              });
+            }
+            await claimDoc.save();
+            console.log(`✓ Synchronized Insurance Claim ${claimDoc.claimNumber} to status: ${claimStatus}`);
+
+            application = {
+              applicationId,
+              status,
+              reviewNotes,
+              targetId: claimDoc.claimNumber,
+              type: 'INSURANCE_CLAIM',
+            };
+          } else if (landData && !landDoc) {
             // Upsert / Save new approved land parcel directly to MongoDB Atlas!
             try {
               let user = null;

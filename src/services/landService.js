@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { Land } from '../models/Land.js';
 import { User } from '../models/User.js';
 import { KYCApplication } from '../models/KYCApplication.js';
+import { InsurancePolicy } from '../models/InsurancePolicy.js';
 import { AppError } from '../utils/appError.js';
 import { HTTP_STATUS } from '../constants/httpStatus.js';
 import { ROLES } from '../constants/roles.js';
@@ -175,8 +176,9 @@ export const landService = {
     await newLand.save();
 
     // Also automatically register in Admin Approval Queue (KYCApplication collection)
+    let validUserId = undefined;
     try {
-      const validUserId = mongoose.isValidObjectId(user._id)
+      validUserId = mongoose.isValidObjectId(user._id)
         ? user._id
         : mongoose.isValidObjectId(userId)
         ? userId
@@ -211,6 +213,47 @@ export const landService = {
       console.log(`✓ Admin KYCApplication created for land registration: APP-LND-${newLand.landId}`);
     } catch (queueErr) {
       console.warn('KYC queue sync warning for land registration:', queueErr?.message);
+    }
+
+    // If tree insurance was selected during registration, automatically create active Insurance Policy
+    if (landData.optInsurance || landData.treesInsured || landData.agronomicDetails?.treesInsured) {
+      try {
+        const insuredTreeCount = Number(landData.insuredTreeCount || landData.standingTreeCount || landData.treeCount || 50);
+        const sumInsured = insuredTreeCount * 8000;
+        const grossPremium = Math.round(sumInsured * 0.0125 * 3 * 0.9);
+        const subsidyAmount = Math.round(grossPremium * 0.4);
+        const netPayable = grossPremium - subsidyAmount;
+
+        const policy = new InsurancePolicy({
+          policyNumber: `BC-POL-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`,
+          userId: validUserId || new mongoose.Types.ObjectId(),
+          userName: user?.name || newLand.ownerName || 'Citizen Farmer',
+          userMobile: user?.mobile || newLand.ownerMobile || '',
+          landId: newLand._id,
+          landName: newLand.landName,
+          surveyNumber: newLand.surveyNumber,
+          khasraNumber: newLand.khasraNumber,
+          planName: landData.insurancePlan || 'Parametric Agroforestry Sovereign Cover',
+          category: 'Commercial Agroforestry',
+          insuredTreeCount,
+          speciesSummary: 'Indian Teak & High-Yield Agroforestry',
+          sumInsured,
+          annualPremium: Math.round(sumInsured * 0.0125),
+          grossPremium,
+          governmentSubsidyPercent: 40,
+          governmentSubsidyAmount: subsidyAmount,
+          farmerNetPayable: netPayable,
+          durationMonths: 36,
+          startDate: new Date(),
+          endDate: new Date(Date.now() + 36 * 30 * 24 * 60 * 60 * 1000),
+          status: 'ACTIVE',
+          paymentStatus: 'PAID',
+        });
+        await policy.save();
+        console.log(`✓ Active Tree Insurance Policy created for land: ${policy.policyNumber}`);
+      } catch (polErr) {
+        console.warn('Policy creation note on land registration:', polErr?.message);
+      }
     }
 
     // Increment user's totalLandAcres / totalLands count if tracked
