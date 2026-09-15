@@ -316,8 +316,8 @@ export const gisService = {
       { $group: { _id: null, totalArea: { $sum: '$area' }, totalTrees: { $sum: '$agronomicDetails.treeCount' } } },
     ]);
 
-    const totalMappedAcres = totalAcresAgg[0]?.totalArea ? Number(totalAcresAgg[0].totalArea.toFixed(1)) : 84.6;
-    const totalStandingTrees = totalAcresAgg[0]?.totalTrees || 1420;
+    const totalMappedAcres = totalAcresAgg[0]?.totalArea ? Number(totalAcresAgg[0].totalArea.toFixed(1)) : 0;
+    const totalStandingTrees = totalAcresAgg[0]?.totalTrees || 0;
 
     const layersCount = await GisLayer.countDocuments({ isActive: true });
 
@@ -327,9 +327,9 @@ export const gisService = {
       approvedParcels: approvedLands,
       totalMappedAcres,
       totalStandingTrees,
-      macroNdviAverage: 0.71,
-      canopyCoverageDensity: '44.8%',
-      activeGisLayers: layersCount || 3,
+      macroNdviAverage: totalLands > 0 ? 0.71 : 0,
+      canopyCoverageDensity: totalLands > 0 ? '44.8%' : '0%',
+      activeGisLayers: layersCount || 0,
       satelliteSensor: 'Sentinel-2 MSI Multispectral (10m)',
       lastOrbitalSync: new Date().toISOString(),
     };
