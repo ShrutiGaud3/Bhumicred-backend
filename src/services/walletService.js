@@ -22,82 +22,22 @@ export const walletService = {
 
       wallet = await Wallet.create({
         userId,
-        availableBalance: 24500, // Initial verified subsidy & seed earnings balance
-        escrowBalance: 12000,
+        availableBalance: 0,
+        escrowBalance: 0,
         lockedBalance: 0,
-        totalEarnings: 36500,
-        totalSpent: 4200,
-        rewardPoints: 3200,
+        totalEarnings: 0,
+        totalSpent: 0,
+        rewardPoints: 0,
         bankAccount: {
-          bankName: 'HDFC Bank',
-          accountNumber: `XXXXXX${userPhone.slice(-4) || '2901'}`,
-          ifscCode: 'HDFC0001044',
+          bankName: '',
+          accountNumber: '',
+          ifscCode: '',
           accountHolderName: farmerName,
-          upiId: `${userPhone}@okhdfcbank`,
-          isVerified: true,
+          upiId: userPhone ? `${userPhone}@upi` : '',
+          isVerified: false,
         },
         status: 'ACTIVE',
       });
-
-      // Seed initial initial transactions for realistic enterprise history
-      const initialTxns = [
-        {
-          walletId: wallet._id,
-          userId,
-          type: 'CREDIT',
-          category: 'CARBON_CREDIT_SALE',
-          amount: 35525,
-          balanceAfter: 35525,
-          status: 'COMPLETED',
-          paymentMethod: 'SMART_ESCROW_CONTRACT',
-          referenceId: 'BC-CARB-2026-90481',
-          title: 'Sovereign Carbon Credit Sale Offtake',
-          description: 'Payment from Gujarat State Climate Fund for 24.5 tCO2e offset',
-        },
-        {
-          walletId: wallet._id,
-          userId,
-          type: 'DEBIT',
-          category: 'MARKETPLACE_PURCHASE',
-          amount: 2180,
-          balanceAfter: 33345,
-          status: 'COMPLETED',
-          paymentMethod: 'BHIM_UPI',
-          referenceId: 'ORD-BC-2026-9106',
-          title: 'Agri Inputs & Bio-Fertilizer Order #9106',
-          description: 'Payment for 100% Organic Neem Cake & Liquid Bio-NPK',
-        },
-        {
-          walletId: wallet._id,
-          userId,
-          type: 'CREDIT',
-          category: 'GOVT_SUBSIDY_DIRECT_TRANSFER',
-          amount: 5000,
-          balanceAfter: 38345,
-          status: 'COMPLETED',
-          paymentMethod: 'IMPS_DIRECT_BANK',
-          referenceId: 'DBT-MOA-2026-8812',
-          title: 'PM-Kisan Agroforestry & Drip Irrigation Subsidy',
-          description: 'Direct Benefit Transfer under National Mission for Sustainable Agriculture',
-        },
-        {
-          walletId: wallet._id,
-          userId,
-          type: 'DEBIT',
-          category: 'BANK_WITHDRAWAL',
-          amount: 13845,
-          balanceAfter: 24500,
-          status: 'COMPLETED',
-          paymentMethod: 'IMPS_DIRECT_BANK',
-          referenceId: 'IMPS-UTR-99120481',
-          title: 'Instant IMPS Payout to HDFC Bank',
-          description: 'Transferred to Account ****2901 (IFSC: HDFC0001044)',
-        },
-      ];
-
-      for (const t of initialTxns) {
-        await Transaction.create(t);
-      }
     }
 
     return wallet;

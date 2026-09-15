@@ -350,8 +350,8 @@ export const insuranceService = {
       claimDescription: desc,
       damagePhotos: photos,
       status: 'SUBMITTED',
-      assignedPartnerName: 'AgriTech Field Services Central',
-      inspectorName: 'Devang Joshi (Senior Agronomist)',
+      assignedPartnerName: 'Field Inspection Partner Services',
+      inspectorName: 'District Field Agronomist',
       inspectionDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000), // in 3 days
     });
 
@@ -377,31 +377,6 @@ export const insuranceService = {
     let claims = await InsuranceClaim.find(filter)
       .sort({ createdAt: -1 })
       .populate('policyId', 'planName sumInsured policyNumber');
-
-    // Seed default claim if none exists
-    if (claims.length === 0 && (userRole === 'FARMER' || userRole === 'SUPER_ADMIN')) {
-      const anyPolicy = await InsurancePolicy.findOne({ userId });
-      if (anyPolicy) {
-        const seedClaim = await InsuranceClaim.create({
-          claimNumber: `CLM-${new Date().getFullYear()}-0811`,
-          policyId: anyPolicy._id,
-          policyNumber: anyPolicy.policyNumber,
-          userId: userId,
-          userName: 'Simran Sonaniya',
-          userMobile: '9575261938',
-          landId: anyPolicy.landId,
-          incidentType: 'Severe Hailstorm & Windthrow',
-          incidentDate: new Date('2026-07-18'),
-          affectedTreeCount: 18,
-          estimatedLoss: 125000,
-          status: 'INSPECTION_SCHEDULED',
-          assignedPartnerName: 'AgriTech Field Services',
-          inspectorName: 'Devang Joshi',
-          inspectionDate: new Date('2026-09-12'),
-        });
-        claims = [seedClaim];
-      }
-    }
 
     return claims;
   },

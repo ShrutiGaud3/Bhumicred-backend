@@ -256,7 +256,7 @@ export const carbonService = {
       farmerId: audit?.farmerId || user._id || user.id,
       farmerName: audit?.farmerName || user.fullName || user.name || 'Citizen Farmer',
       landId: land?._id || audit?.landId,
-      landName: land?.landName || audit?.landName || 'Simran Organic Mustard & Wheat Farm',
+      landName: land?.landName || audit?.landName || 'Agri Organic Farm Plot',
       surveyNumber: land?.surveyNumber || audit?.surveyNumber || '612/A',
       treeCount: audit?.estimatedTreeCount || 180,
       treeSpecies: audit?.agroforestryType || 'Indian Teak & Mixed Hardwood',

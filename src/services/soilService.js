@@ -110,7 +110,7 @@ export const soilService = {
       pickupTimeSlot: pickupTimeSlot || '09:00 AM - 12:00 PM',
       assignedLab: 'TerraAgri NABL Accredited Regional Laboratory, Anand',
       labRegNo: 'NABL/TC-9042',
-      assignedCollector: 'Ramesh Patel (District Agronomy Specialist)',
+      assignedCollector: 'District Agronomy Specialist',
       sampleCollectedAt: null,
       reportReadyAt: null,
       healthScore: 0,
@@ -150,38 +150,6 @@ export const soilService = {
       .sort({ createdAt: -1 })
       .populate('landId', 'landName surveyNumber area areaUnit village district')
       .populate('certificateDocId', 'title fileUrl sha256Hash status');
-
-    if (requests.length === 0 && (role === 'FARMER' || role === 'SUPER_ADMIN')) {
-      const anyLand =
-        (await Land.findOne({ ownerId: userId })) || (await Land.findOne());
-      if (anyLand) {
-        const seedTest = await SoilTestRequest.create({
-          requestNumber: `SR-${new Date().getFullYear()}-0942`,
-          userId: userId,
-          userName: 'Simran Sonaniya',
-          userMobile: '9575261938',
-          landId: anyLand._id,
-          landName: anyLand.landName || 'Simran Organic Mustard & Wheat Farm',
-          surveyNumber: anyLand.surveyNumber || '612/A',
-          khasraNumber: anyLand.khasraNumber || '190/2',
-          packageId: 'pkg_advanced',
-          packageType: 'Advanced 12-Parameter Micronutrient Grid',
-          fee: 850,
-          paymentStatus: 'PAID',
-          status: 'REPORT_READY',
-          pickupDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-          pickupTimeSlot: '10:00 AM - 01:00 PM',
-          assignedLab: 'TerraAgri NABL Accredited Regional Laboratory, Anand',
-          labRegNo: 'NABL/TC-9042',
-          assignedCollector: 'Ramesh Patel (District Agronomy Specialist)',
-          sampleCollectedAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000),
-          reportReadyAt: new Date(),
-          healthScore: 86,
-          notes: 'Standard pre-sowing soil profile testing',
-        });
-        requests = [seedTest];
-      }
-    }
 
     return requests;
   },

@@ -3,86 +3,17 @@ import SupportTicket from '../models/SupportTicket.js';
 
 class NotificationService {
   /**
-   * Seed default notifications if user/role has no active notifications
+   * Seed default notifications if user/role has no active notifications (No-op in production/clean state)
    */
   async seedDefaultNotificationsIfEmpty(userId, role) {
-    const count = await Notification.countDocuments({
-      $or: [
-        { userId: userId || null },
-        { targetRole: { $in: [role, 'ALL'] } },
-      ],
-    });
-
-    if (count > 0) return;
-
-    const seedItems = [
-      {
-        targetRole: 'FARMER',
-        title: 'Soil Health Card Ready',
-        message: 'NABL Certified laboratory has uploaded your 12-parameter soil health report for Khasra 412/1.',
-        category: 'SOIL',
-        priority: 'HIGH',
-        link: '/farmer/soil',
-      },
-      {
-        targetRole: 'FARMER',
-        title: 'Claim Settlement Disbursed',
-        message: 'Insurance claim payout of ₹48,000 has been credited to your BHUMICRED Smart Wallet.',
-        category: 'WALLET',
-        priority: 'HIGH',
-        link: '/farmer/wallet',
-      },
-      {
-        targetRole: 'FARMER',
-        title: 'Land Verification In Progress',
-        message: 'Revenue Officer assigned to verify your cadastral Naksha for Parcel #LND-9082.',
-        category: 'LAND',
-        priority: 'NORMAL',
-        link: '/farmer/lands',
-      },
-      {
-        targetRole: 'GOVERNMENT',
-        title: 'New Community Land Demarcation',
-        message: 'Gaon Sabha plot #44/2 registered in Kheda block awaiting nodal allocation audit.',
-        category: 'LAND',
-        priority: 'HIGH',
-        link: '/government/assets',
-      },
-      {
-        targetRole: 'PARTNER',
-        title: 'Urgent Drone Survey Assigned',
-        message: 'Tree census survey in Anand Cluster assigned. Scheduled deadline: 48 hours.',
-        category: 'TASK',
-        priority: 'HIGH',
-        link: '/partner/tasks',
-      },
-      {
-        targetRole: 'SUPER_ADMIN',
-        title: 'High-Value Claim Approval Required',
-        message: 'Storm damage claim of ₹1,45,000 pending final underwriter sign-off.',
-        category: 'INSURANCE',
-        priority: 'HIGH',
-        link: '/admin/insurance',
-      },
-      {
-        targetRole: 'ALL',
-        title: 'BHUMICRED 2026 Kharif Support Active',
-        message: 'Sovereign subsidy and parametric tree insurance enrollment is now live across all districts.',
-        category: 'SCHEME',
-        priority: 'NORMAL',
-        link: '/schemes',
-      },
-    ];
-
-    await Notification.insertMany(seedItems);
+    // Clean dynamic notifications only - no mock seeding
+    return;
   }
 
   /**
    * Get all notifications for a specific user and role
    */
   async getUserNotifications(userId, role = 'FARMER', filter = 'ALL') {
-    // Seed if empty
-    await this.seedDefaultNotificationsIfEmpty(userId, role);
 
     const query = {
       $or: [

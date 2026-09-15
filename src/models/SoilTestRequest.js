@@ -101,7 +101,7 @@ const soilTestRequestSchema = new mongoose.Schema(
     },
     assignedCollector: {
       type: String,
-      default: 'Ramesh Patel (District Agronomy Specialist)',
+      default: 'District Agronomy Specialist',
     },
     sampleCollectedAt: {
       type: Date,
