@@ -471,10 +471,10 @@ export const insuranceService = {
       activePolicies,
       totalClaims,
       settledClaims,
-      totalSumInsured: sumAgg[0]?.totalSumInsured || 1830000,
-      totalInsuredTrees: sumAgg[0]?.totalTrees || 225,
-      totalGovernmentSubsidyDisbursed: sumAgg[0]?.totalSubsidy || 42800,
-      claimsSettlementRatio: '98.4%',
+      totalSumInsured: sumAgg[0]?.totalSumInsured || 0,
+      totalInsuredTrees: sumAgg[0]?.totalTrees || 0,
+      totalGovernmentSubsidyDisbursed: sumAgg[0]?.totalSubsidy || 0,
+      claimsSettlementRatio: totalClaims > 0 ? (settledClaims > 0 ? `${((settledClaims / totalClaims) * 100).toFixed(1)}%` : '100%') : '100%',
     };
   },
 };
