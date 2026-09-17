@@ -50,7 +50,7 @@ const userSchema = new mongoose.Schema(
     permissions: {
       type: [String],
       default: function () {
-        return ROLE_PERMISSIONS[this.role] || [];
+        return ROLE_PERMISSIONS[this?.role || ROLES.FARMER] || [];
       },
     },
     status: {

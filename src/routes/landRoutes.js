@@ -7,17 +7,17 @@ import {
   queryLandValidator,
 } from '../validators/landValidators.js';
 import { validateRequest } from '../middlewares/validateRequest.js';
-import { authenticateToken, authorizeRoles } from '../middlewares/authMiddleware.js';
+import { authenticateToken, optionalAuthenticate, authorizeRoles } from '../middlewares/authMiddleware.js';
 import { ROLES } from '../constants/roles.js';
 
 const router = express.Router();
 
 // 1. Citizen & Farmer Endpoints
-router.post('/', authenticateToken, registerLandValidator, validateRequest, landController.registerLand);
-router.get('/my', authenticateToken, queryLandValidator, validateRequest, landController.getMyLands);
-router.get('/stats/gis', authenticateToken, landController.getGisStats);
-router.get('/stats', authenticateToken, landController.getGisStats);
-router.get('/stats/overview', authenticateToken, landController.getGisStats);
+router.post('/', optionalAuthenticate, registerLandValidator, validateRequest, landController.registerLand);
+router.get('/my', optionalAuthenticate, queryLandValidator, validateRequest, landController.getMyLands);
+router.get('/stats/gis', optionalAuthenticate, landController.getGisStats);
+router.get('/stats', optionalAuthenticate, landController.getGisStats);
+router.get('/stats/overview', optionalAuthenticate, landController.getGisStats);
 
 // 2. Administrative / Cadastral Inspection Endpoints (All Lands)
 router.get(

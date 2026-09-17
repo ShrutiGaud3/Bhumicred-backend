@@ -203,7 +203,7 @@ export const onboardingService = {
           const landQuery = {};
           if (filters.status && filters.status !== 'ALL') {
             if (filters.status === 'PENDING') {
-              landQuery.status = { $in: ['PENDING_VERIFICATION', 'PENDING_REVIEW', 'SUBMITTED', 'UNDER_REVIEW'] };
+              landQuery.status = { $in: ['PENDING_VERIFICATION', 'PENDING_REVIEW', 'PENDING_APPROVAL', 'PENDING', 'SUBMITTED', 'UNDER_REVIEW'] };
             } else if (filters.status === 'APPROVED') {
               landQuery.status = { $in: ['APPROVED', 'ACTIVE', 'VERIFIED'] };
             } else if (filters.status === 'QUERY_REJECT') {
@@ -227,12 +227,21 @@ export const onboardingService = {
 
           const allLands = await Land.find(landQuery).sort({ createdAt: -1 }).limit(100);
           for (const l of allLands) {
+            const rawLndId = l.landId || '';
+            const normalizedLndId = rawLndId.replace(/^LND-/, '');
             const existingIndex = items.findIndex(
-              (it) => it.targetId === l.landId || it.applicationId === `APP-LND-${l.landId}`
+              (it) =>
+                it.targetId === rawLndId ||
+                it.applicationId === `APP-LND-${rawLndId}` ||
+                it.applicationId === `APP-LND-${normalizedLndId}` ||
+                it.applicationId === `APP-LND-LND-${normalizedLndId}` ||
+                it.applicationId === rawLndId ||
+                (it._id && l._id && String(it._id) === String(l._id))
             );
+
             const landItem = {
               _id: l._id,
-              applicationId: `APP-LND-${l.landId}`,
+              applicationId: `APP-LND-${rawLndId}`,
               userId: l.ownerId,
               type: 'LAND_REGISTRATION',
               title: `Land Title Registration - ${l.landName || 'Parcel'} (Khasra ${l.khasraNumber || 'N/A'}, Survey ${l.surveyNumber || 'N/A'})`,
@@ -240,16 +249,25 @@ export const onboardingService = {
               mobile: l.ownerMobile || '',
               role: 'FARMER',
               address: l.location,
-              details: `${l.area || 0} Acres in ${l.location?.village || 'Local'}, ${l.location?.district || 'Anand'} • Soil: ${l.agronomicDetails?.soilType || 'Alluvial'}`,
-              status: l.status || 'APPROVED',
+              area: l.area || 0,
+              landName: l.landName,
+              surveyNumber: l.surveyNumber,
+              khasraNumber: l.khasraNumber,
+              details: `${l.area || 0} Acres in ${l.location?.village || 'Local'}, ${l.location?.district || 'Anand'} • Soil: ${l.agronomicDetails?.soilType || 'Alluvial Loam'}`,
+              status: l.status || 'PENDING_VERIFICATION',
               riskScore: l.riskScore || 'LOW',
               targetId: l.landId,
               submittedAt: l.createdAt || new Date(),
+              createdAt: l.createdAt || new Date(),
             };
 
             if (existingIndex >= 0) {
-              // Sync status with land document
-              items[existingIndex] = { ...items[existingIndex], ...landItem, status: l.status || items[existingIndex].status };
+              // Sync status and metadata with land document
+              items[existingIndex] = {
+                ...items[existingIndex],
+                ...landItem,
+                status: l.status || items[existingIndex].status || 'PENDING_VERIFICATION',
+              };
             } else {
               items.push(landItem);
             }
@@ -436,10 +454,16 @@ export const onboardingService = {
             console.log(`✓ Synchronized User ${userDoc.name} (${userDoc.mobile}) to status: ${userStatus}`);
           }
           // Check if this application corresponds directly to a Land
-          const rawLandId = applicationId?.replace(/^APP-LND-/, '');
+          const rawLandId = String(applicationId || '').replace(/^APP-LND-/, '');
+          const normalizedLandId = rawLandId.replace(/^LND-/, '');
           const isLandDocObjectId = mongoose.isValidObjectId(rawLandId);
           let landDoc = await Land.findOne({
-            $or: [{ landId: rawLandId }, { landId: applicationId }, { _id: isLandDocObjectId ? rawLandId : null }],
+            $or: [
+              { landId: rawLandId },
+              { landId: `LND-${normalizedLandId}` },
+              { landId: applicationId },
+              { _id: isLandDocObjectId ? rawLandId : null },
+            ],
           });
 
           if (landDoc) {

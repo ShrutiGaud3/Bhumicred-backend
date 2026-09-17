@@ -52,20 +52,40 @@ export const landService = {
    */
   async registerLand(userId, landData, userObj) {
     let user = null;
+    const cleanMobile = (userObj?.phone || userObj?.mobile || landData.ownerMobile || '').replace(/\D/g, '');
+    const userName = userObj?.name || landData.ownerName || 'Citizen Farmer';
+
     if (userId && mongoose.isValidObjectId(userId)) {
       user = await User.findById(userId);
     }
-    if (!user && (userObj?.phone || userObj?.mobile || landData.ownerMobile)) {
-      const cleanPhone = (userObj?.phone || userObj?.mobile || landData.ownerMobile).replace(/\D/g, '');
-      user = await User.findOne({ mobile: cleanPhone });
+    if (!user && cleanMobile) {
+      user = await User.findOne({ mobile: cleanMobile });
     }
-    if (!user) {
-      user = userObj || {
-        _id: mongoose.isValidObjectId(userId) ? userId : new mongoose.Types.ObjectId(),
-        name: landData.ownerName || 'Citizen Farmer',
-        mobile: landData.ownerMobile || '',
+    if (!user && cleanMobile) {
+      user = await User.findOneAndUpdate(
+        { mobile: cleanMobile },
+        {
+          $setOnInsert: {
+            name: userName,
+            mobile: cleanMobile,
+            role: ROLES.FARMER,
+            status: 'APPROVED',
+            kycStatus: 'PENDING_VERIFICATION',
+          },
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+    }
+    if (!user || !user._id || !mongoose.isValidObjectId(user._id)) {
+      const fallbackMobile = cleanMobile || `9${Math.floor(100000000 + Math.random() * 900000000)}`;
+      const userDoc = new User({
+        name: userName,
+        mobile: fallbackMobile,
         role: ROLES.FARMER,
-      };
+        status: 'APPROVED',
+        kycStatus: 'PENDING_VERIFICATION',
+      });
+      user = await userDoc.save();
     }
 
     const landId = await generateLandId();
@@ -188,13 +208,13 @@ export const landService = {
         applicationId: `APP-LND-${newLand.landId}`,
         userId: validUserId,
         type: 'LAND_REGISTRATION',
-        title: `Land Title Registration - Khasra ${newLand.khasraNumber} (Survey ${newLand.surveyNumber})`,
-        applicantName: user.name || newLand.ownerName || 'Citizen Farmer',
-        fatherName: user.fatherName || '',
-        gender: user.gender || 'MALE',
-        mobile: user.mobile || newLand.ownerMobile || '',
-        email: user.email || '',
-        role: user.role || 'FARMER',
+        title: `Land Title Registration - ${newLand.landName || 'Parcel'} (Khasra ${newLand.khasraNumber || 'N/A'}, Survey ${newLand.surveyNumber || 'N/A'})`,
+        applicantName: user?.name || newLand.ownerName || 'Citizen Farmer',
+        fatherName: user?.fatherName || '',
+        gender: user?.gender || 'MALE',
+        mobile: user?.mobile || newLand.ownerMobile || cleanMobile || '9876543210',
+        email: user?.email || '',
+        role: user?.role || 'FARMER',
         address: {
           country: newLand.location?.country || 'India',
           state: newLand.location?.state || 'Gujarat',
