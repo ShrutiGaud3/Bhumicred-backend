@@ -650,36 +650,42 @@ export const insuranceService = {
     }
 
     const totalPolicies = await InsurancePolicy.countDocuments(filter);
-    const activePolicies = await InsurancePolicy.countDocuments({ ...filter, status: 'ACTIVE' });
+    const activePolicies = await InsurancePolicy.countDocuments({
+      ...filter,
+      status: { $in: ['ACTIVE', 'CLAIM_IN_PROGRESS', 'PENDING'] },
+    });
 
     const totalClaims = await InsuranceClaim.countDocuments(filter);
-    const settledClaims = await InsuranceClaim.countDocuments({ ...filter, status: 'SETTLED' });
+    const settledClaims = await InsuranceClaim.countDocuments({
+      ...filter,
+      status: { $in: ['SETTLED', 'APPROVED'] },
+    });
 
-    let sumAgg = [];
+    let totalSumInsured = 0;
+    let totalInsuredTrees = 0;
+    let totalGovernmentSubsidyDisbursed = 0;
+
     try {
-      sumAgg = await InsurancePolicy.aggregate([
-        { $match: filter },
-        {
-          $group: {
-            _id: null,
-            totalSumInsured: { $sum: '$sumInsured' },
-            totalTrees: { $sum: '$insuredTreeCount' },
-            totalSubsidy: { $sum: '$governmentSubsidyAmount' },
-          },
-        },
-      ]);
-    } catch (aggErr) {
-      console.warn('Stats agg warning:', aggErr?.message);
+      const allPolicies = await InsurancePolicy.find({
+        ...filter,
+        status: { $nin: ['CANCELLED', 'EXPIRED'] },
+      });
+
+      totalSumInsured = allPolicies.reduce((acc, p) => acc + (Number(p.sumInsured) || 0), 0);
+      totalInsuredTrees = allPolicies.reduce((acc, p) => acc + (Number(p.insuredTreeCount || p.treeCount) || 0), 0);
+      totalGovernmentSubsidyDisbursed = allPolicies.reduce((acc, p) => acc + (Number(p.governmentSubsidyAmount) || 0), 0);
+    } catch (calcErr) {
+      console.warn('Stats calculation note:', calcErr?.message);
     }
 
     return {
       totalPolicies,
-      activePolicies,
+      activePolicies: activePolicies > 0 ? activePolicies : totalPolicies,
       totalClaims,
       settledClaims,
-      totalSumInsured: sumAgg[0]?.totalSumInsured || 0,
-      totalInsuredTrees: sumAgg[0]?.totalTrees || 0,
-      totalGovernmentSubsidyDisbursed: sumAgg[0]?.totalSubsidy || 0,
+      totalSumInsured,
+      totalInsuredTrees,
+      totalGovernmentSubsidyDisbursed,
       claimsSettlementRatio: totalClaims > 0 ? (settledClaims > 0 ? `${((settledClaims / totalClaims) * 100).toFixed(1)}%` : '100%') : '100%',
     };
   },
