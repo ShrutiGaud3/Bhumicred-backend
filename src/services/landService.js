@@ -300,21 +300,23 @@ export const landService = {
       };
     }
 
-    const filter = { $or: ownerQueries };
+    const filter = { $and: [{ $or: ownerQueries }] };
 
     if (status && status !== 'ALL') {
-      filter.status = status;
+      filter.$and.push({ status });
     }
 
     if (search && search.trim()) {
       const searchRegex = new RegExp(search.trim(), 'i');
-      filter.$or = [
-        { landName: searchRegex },
-        { surveyNumber: searchRegex },
-        { khasraNumber: searchRegex },
-        { 'location.village': searchRegex },
-        { 'location.district': searchRegex },
-      ];
+      filter.$and.push({
+        $or: [
+          { landName: searchRegex },
+          { surveyNumber: searchRegex },
+          { khasraNumber: searchRegex },
+          { 'location.village': searchRegex },
+          { 'location.district': searchRegex },
+        ],
+      });
     }
 
     const skip = (Math.max(1, parseInt(page, 10)) - 1) * parseInt(limit, 10);

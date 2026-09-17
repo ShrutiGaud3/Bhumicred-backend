@@ -131,9 +131,19 @@ export const onboardingService = {
     let items = [];
     const query = {};
 
+    // Status filter mapping
     if (filters.status && filters.status !== 'ALL') {
-      query.status = filters.status;
+      if (filters.status === 'PENDING') {
+        query.status = { $in: ['PENDING_VERIFICATION', 'PENDING_REVIEW', 'PENDING_APPROVAL', 'SUBMITTED', 'UNDER_REVIEW'] };
+      } else if (filters.status === 'APPROVED') {
+        query.status = { $in: ['APPROVED', 'ACTIVE', 'VERIFIED'] };
+      } else if (filters.status === 'QUERY_REJECT') {
+        query.status = { $in: ['QUERY_PENDING', 'QUERY_RAISED', 'REJECTED'] };
+      } else {
+        query.status = filters.status;
+      }
     }
+
     if (filters.type && filters.type !== 'ALL') {
       query.type = filters.type;
     }
@@ -150,13 +160,59 @@ export const onboardingService = {
         const kycItems = await KYCApplication.find(query).sort({ createdAt: -1 }).limit(100);
         items = kycItems.map((it) => (it.toJSON ? it.toJSON() : it));
 
-        // Also query pending Lands from Land collection if filter allows LAND_REGISTRATION
-        if (!filters.type || filters.type === 'ALL' || filters.type === 'LAND_REGISTRATION') {
-          const landStatusQuery = filters.status && filters.status !== 'ALL'
-            ? filters.status
-            : { $in: ['PENDING_VERIFICATION', 'PENDING_REVIEW', 'SUBMITTED'] };
+        // Also query registered Users to ensure all officers/partners/farmers are accounted for
+        if (!filters.type || filters.type === 'ALL' || filters.type === 'GOVERNMENT_ONBOARDING' || filters.type === 'PARTNER_ONBOARDING' || filters.type === 'FARMER_KYC') {
+          const userQuery = { role: { $in: ['FARMER', 'GOVERNMENT', 'PARTNER'] } };
+          if (filters.search) {
+            const searchRegex = new RegExp(filters.search, 'i');
+            userQuery.$or = [{ name: searchRegex }, { mobile: searchRegex }, { email: searchRegex }];
+          }
+          const allUsers = await User.find(userQuery).lean();
+          for (const u of allUsers) {
+            const cleanM = (u.mobile || '').replace(/\D/g, '');
+            const existing = items.find(
+              (it) => (it.mobile && it.mobile.replace(/\D/g, '') === cleanM) || (it.userId && String(it.userId) === String(u._id))
+            );
+            if (!existing) {
+              const uType = u.role === 'GOVERNMENT' ? 'GOVERNMENT_ONBOARDING' : u.role === 'PARTNER' ? 'PARTNER_ONBOARDING' : 'FARMER_KYC';
+              if (!filters.type || filters.type === 'ALL' || filters.type === uType) {
+                items.push({
+                  _id: u._id,
+                  applicationId: u.applicationId || `BC-APP-${u._id.toString().slice(-6).toUpperCase()}`,
+                  userId: u._id,
+                  type: uType,
+                  title: `${u.role === 'GOVERNMENT' ? 'Government Official Verification' : u.role === 'PARTNER' ? 'Enterprise Partner Verification' : 'Farmer KYC Verification'} - ${u.name}`,
+                  applicantName: u.name,
+                  fatherName: u.fatherName || '',
+                  gender: u.gender || 'MALE',
+                  mobile: u.mobile,
+                  email: u.email || '',
+                  role: u.role,
+                  address: u.address || { city: 'Anand', state: 'Gujarat' },
+                  status: u.kycStatus || u.status || 'APPROVED',
+                  riskScore: 'LOW',
+                  submittedAt: u.createdAt || new Date(),
+                });
+              }
+            }
+          }
+        }
 
-          const landQuery = { status: landStatusQuery };
+        // Also query Lands from Land collection if filter allows LAND_REGISTRATION
+        if (!filters.type || filters.type === 'ALL' || filters.type === 'LAND_REGISTRATION') {
+          const landQuery = {};
+          if (filters.status && filters.status !== 'ALL') {
+            if (filters.status === 'PENDING') {
+              landQuery.status = { $in: ['PENDING_VERIFICATION', 'PENDING_REVIEW', 'SUBMITTED', 'UNDER_REVIEW'] };
+            } else if (filters.status === 'APPROVED') {
+              landQuery.status = { $in: ['APPROVED', 'ACTIVE', 'VERIFIED'] };
+            } else if (filters.status === 'QUERY_REJECT') {
+              landQuery.status = { $in: ['REJECTED', 'QUERY_RAISED', 'QUERY_PENDING'] };
+            } else {
+              landQuery.status = filters.status;
+            }
+          }
+
           if (filters.search) {
             const searchRegex = new RegExp(filters.search, 'i');
             landQuery.$or = [
@@ -165,45 +221,71 @@ export const onboardingService = {
               { surveyNumber: searchRegex },
               { ownerName: searchRegex },
               { ownerMobile: searchRegex },
+              { landId: searchRegex },
             ];
           }
 
-          const pendingLands = await Land.find(landQuery).sort({ createdAt: -1 }).limit(50);
-          for (const l of pendingLands) {
-            const existingInKyc = items.some(
+          const allLands = await Land.find(landQuery).sort({ createdAt: -1 }).limit(100);
+          for (const l of allLands) {
+            const existingIndex = items.findIndex(
               (it) => it.targetId === l.landId || it.applicationId === `APP-LND-${l.landId}`
             );
-            if (!existingInKyc) {
-              items.push({
-                _id: l._id,
-                applicationId: `APP-LND-${l.landId}`,
-                userId: l.ownerId,
-                type: 'LAND_REGISTRATION',
-                title: `Land Title Registration - Khasra ${l.khasraNumber || 'N/A'} (Survey ${l.surveyNumber || 'N/A'})`,
-                applicantName: l.ownerName || 'Citizen Farmer',
-                mobile: l.ownerMobile || '',
-                role: 'FARMER',
-                address: l.location,
-                details: `${l.area || 0} Acres in ${l.location?.village || 'Local'}, ${l.location?.district || ''}`,
-                status: l.status || 'PENDING_VERIFICATION',
-                riskScore: l.riskScore || 'LOW',
-                targetId: l.landId,
-                submittedAt: l.createdAt,
-              });
+            const landItem = {
+              _id: l._id,
+              applicationId: `APP-LND-${l.landId}`,
+              userId: l.ownerId,
+              type: 'LAND_REGISTRATION',
+              title: `Land Title Registration - ${l.landName || 'Parcel'} (Khasra ${l.khasraNumber || 'N/A'}, Survey ${l.surveyNumber || 'N/A'})`,
+              applicantName: l.ownerName || 'Citizen Farmer',
+              mobile: l.ownerMobile || '',
+              role: 'FARMER',
+              address: l.location,
+              details: `${l.area || 0} Acres in ${l.location?.village || 'Local'}, ${l.location?.district || 'Anand'} • Soil: ${l.agronomicDetails?.soilType || 'Alluvial'}`,
+              status: l.status || 'APPROVED',
+              riskScore: l.riskScore || 'LOW',
+              targetId: l.landId,
+              submittedAt: l.createdAt || new Date(),
+            };
+
+            if (existingIndex >= 0) {
+              // Sync status with land document
+              items[existingIndex] = { ...items[existingIndex], ...landItem, status: l.status || items[existingIndex].status };
+            } else {
+              items.push(landItem);
             }
           }
         }
 
-        // Also query pending Insurance Claims if filter allows INSURANCE_CLAIM
+        // Also query Insurance Claims if filter allows INSURANCE_CLAIM
         if (!filters.type || filters.type === 'ALL' || filters.type === 'INSURANCE_CLAIM') {
-          const claimStatusQuery = filters.status && filters.status !== 'ALL'
-            ? filters.status
-            : { $in: ['SUBMITTED', 'UNDER_REVIEW', 'PENDING_VERIFICATION', 'INSPECTION_SCHEDULED'] };
+          const claimQuery = {};
+          if (filters.status && filters.status !== 'ALL') {
+            if (filters.status === 'PENDING') {
+              claimQuery.status = { $in: ['SUBMITTED', 'UNDER_REVIEW', 'PENDING_VERIFICATION', 'INSPECTION_SCHEDULED'] };
+            } else if (filters.status === 'APPROVED') {
+              claimQuery.status = { $in: ['APPROVED', 'SETTLED', 'PAID'] };
+            } else if (filters.status === 'QUERY_REJECT') {
+              claimQuery.status = { $in: ['REJECTED', 'QUERY_PENDING'] };
+            } else {
+              claimQuery.status = filters.status;
+            }
+          }
 
-          const pendingClaims = await InsuranceClaim.find({ status: claimStatusQuery }).sort({ createdAt: -1 }).limit(50);
-          for (const c of pendingClaims) {
+          if (filters.search) {
+            const searchRegex = new RegExp(filters.search, 'i');
+            claimQuery.$or = [
+              { claimNumber: searchRegex },
+              { userName: searchRegex },
+              { userMobile: searchRegex },
+              { policyNumber: searchRegex },
+              { incidentType: searchRegex },
+            ];
+          }
+
+          const allClaims = await InsuranceClaim.find(claimQuery).sort({ createdAt: -1 }).limit(100);
+          for (const c of allClaims) {
             const existingInQueue = items.some(
-              (it) => it.targetId === c._id.toString() || it.applicationId === `APP-CLM-${c.claimNumber}` || it.id === c.claimNumber
+              (it) => it.targetId === c._id.toString() || it.targetId === c.claimNumber || it.applicationId === `APP-CLM-${c.claimNumber}` || it.id === c.claimNumber
             );
             if (!existingInQueue) {
               items.push({
@@ -211,15 +293,15 @@ export const onboardingService = {
                 applicationId: `APP-CLM-${c.claimNumber}`,
                 userId: c.userId,
                 type: 'INSURANCE_CLAIM',
-                title: `Tree Loss Insurance Claim - ${c.incidentType} (${c.affectedTreeCount} Trees)`,
+                title: `Tree Loss Insurance Claim - ${c.incidentType || 'Claim'} (${c.affectedTreeCount || 0} Trees)`,
                 applicantName: c.userName || 'Insured Farmer',
                 mobile: c.userMobile || '',
                 role: 'FARMER',
-                details: `Policy: ${c.policyNumber} • Estimated Loss: ₹${(Number(c.estimatedLoss) || 0).toLocaleString('en-IN')}`,
-                status: c.status === 'SUBMITTED' ? 'PENDING_VERIFICATION' : c.status,
+                details: `Policy: ${c.policyNumber || 'N/A'} • Estimated Loss: ₹${(Number(c.estimatedLoss) || 0).toLocaleString('en-IN')}`,
+                status: c.status === 'SETTLED' ? 'APPROVED' : c.status === 'SUBMITTED' ? 'PENDING_VERIFICATION' : c.status,
                 riskScore: 'LOW',
                 targetId: c.claimNumber || c._id.toString(),
-                submittedAt: c.createdAt || c.incidentDate,
+                submittedAt: c.createdAt || c.incidentDate || new Date(),
               });
             }
           }
@@ -228,6 +310,9 @@ export const onboardingService = {
         console.warn('Error reading admin KYC queue:', err.message);
       }
     }
+
+    // Sort descending by submission/creation time
+    items.sort((a, b) => new Date(b.submittedAt || b.createdAt || 0) - new Date(a.submittedAt || a.createdAt || 0));
 
     return items;
   },

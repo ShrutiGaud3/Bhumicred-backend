@@ -24,6 +24,17 @@ export const generateJwtToken = (user) => {
   });
 };
 
+const ROLE_DISPLAY_NAMES = {
+  [ROLES.FARMER]: 'Farmer / Land Owner',
+  [ROLES.GOVERNMENT]: 'Government Body',
+  [ROLES.PARTNER]: 'Enterprise Partner',
+  [ROLES.SUPER_ADMIN]: 'Admin Portal',
+  [ROLES.OPERATIONS_ADMIN]: 'Admin Portal',
+  [ROLES.VERIFICATION_ADMIN]: 'Admin Portal',
+  [ROLES.FINANCE_ADMIN]: 'Admin Portal',
+  [ROLES.ADMIN_STAFF]: 'Admin Portal',
+};
+
 export const authService = {
   async sendOtp(mobile, role = ROLES.FARMER) {
     const cleanMobile = mobile.replace(/\D/g, '');
@@ -35,16 +46,50 @@ export const authService = {
     const devOtp = '123456';
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
 
-    // If MongoDB is connected, update existing user's OTP record
+    // If MongoDB is connected, verify user exists and match requested role
     if (mongoose.connection.readyState === 1) {
-      try {
-        await User.findOneAndUpdate(
-          { $or: [{ mobile: cleanMobile }, { mobile: `+91${cleanMobile}` }, { mobile: new RegExp(cleanMobile) }] },
-          { otp: { code: devOtp, expiresAt } },
-          { upsert: false }
+      const existingUser = await User.findOne({
+        $or: [{ mobile: cleanMobile }, { mobile: `+91${cleanMobile}` }, { mobile: new RegExp(cleanMobile) }]
+      });
+
+      if (existingUser) {
+        const userRole = existingUser.role;
+        const isAdminUser = [
+          ROLES.SUPER_ADMIN,
+          ROLES.OPERATIONS_ADMIN,
+          ROLES.VERIFICATION_ADMIN,
+          ROLES.FINANCE_ADMIN,
+          ROLES.ADMIN_STAFF
+        ].includes(userRole);
+
+        const isRequestedAdmin = [
+          ROLES.SUPER_ADMIN,
+          ROLES.OPERATIONS_ADMIN,
+          ROLES.VERIFICATION_ADMIN,
+          ROLES.FINANCE_ADMIN,
+          ROLES.ADMIN_STAFF
+        ].includes(role);
+
+        if (role && userRole) {
+          if (isAdminUser && isRequestedAdmin) {
+            // Admin authentication allowed
+          } else if (userRole !== role) {
+            const currentPortalName = ROLE_DISPLAY_NAMES[role] || role;
+            const registeredPortalName = ROLE_DISPLAY_NAMES[userRole] || userRole;
+            throw new AppError(
+              `Yeh mobile number (${cleanMobile}) '${registeredPortalName}' portal ke liye registered hai. Aap '${currentPortalName}' portal par login nahi kar sakte. Kripya '${registeredPortalName}' portal select karein.`,
+              HTTP_STATUS.FORBIDDEN
+            );
+          }
+        }
+
+        existingUser.otp = { code: devOtp, expiresAt };
+        await existingUser.save();
+      } else {
+        throw new AppError(
+          `No registered account found for mobile number +91 ${cleanMobile}. Kripya pehle Register / Create Profile karein.`,
+          HTTP_STATUS.NOT_FOUND
         );
-      } catch (e) {
-        // Non-blocking
       }
     }
 
@@ -85,6 +130,37 @@ export const authService = {
         `No account found registered with mobile number +91 ${cleanMobile}. Please create your profile via Register first.`,
         HTTP_STATUS.NOT_FOUND
       );
+    }
+
+    // Role verification enforcement
+    const userRole = user.role;
+    const isAdminUser = [
+      ROLES.SUPER_ADMIN,
+      ROLES.OPERATIONS_ADMIN,
+      ROLES.VERIFICATION_ADMIN,
+      ROLES.FINANCE_ADMIN,
+      ROLES.ADMIN_STAFF
+    ].includes(userRole);
+
+    const isRequestedAdmin = [
+      ROLES.SUPER_ADMIN,
+      ROLES.OPERATIONS_ADMIN,
+      ROLES.VERIFICATION_ADMIN,
+      ROLES.FINANCE_ADMIN,
+      ROLES.ADMIN_STAFF
+    ].includes(requestedRole);
+
+    if (requestedRole && userRole) {
+      if (isAdminUser && isRequestedAdmin) {
+        // Admin authentication allowed
+      } else if (userRole !== requestedRole) {
+        const currentPortalName = ROLE_DISPLAY_NAMES[requestedRole] || requestedRole;
+        const registeredPortalName = ROLE_DISPLAY_NAMES[userRole] || userRole;
+        throw new AppError(
+          `Yeh account '${registeredPortalName}' portal ke liye registered hai, '${currentPortalName}' portal ke liye nahi. Kripya '${registeredPortalName}' portal select karke login karein.`,
+          HTTP_STATUS.FORBIDDEN
+        );
+      }
     }
 
     user.lastLoginAt = new Date();

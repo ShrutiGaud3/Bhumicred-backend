@@ -182,7 +182,7 @@ export const walletService = {
   },
 
   /**
-   * 6. Admin Treasury & Platform Escrow Overview
+   * 6. Admin Treasury & Platform Escrow Overview (from MongoDB)
    */
   async getAdminTreasuryOverview() {
     const totalWallets = await Wallet.countDocuments();
@@ -192,6 +192,7 @@ export const walletService = {
           _id: null,
           totalLiquid: { $sum: '$availableBalance' },
           totalEscrow: { $sum: '$escrowBalance' },
+          totalLocked: { $sum: '$lockedBalance' },
           totalEarnings: { $sum: '$totalEarnings' },
           totalSpent: { $sum: '$totalSpent' },
         },
@@ -199,46 +200,78 @@ export const walletService = {
     ]);
 
     const stats = sumAgg[0] || {
-      totalLiquid: 4850000,
-      totalEscrow: 1250000,
-      totalEarnings: 8450000,
-      totalSpent: 1420000,
+      totalLiquid: 0,
+      totalEscrow: 0,
+      totalLocked: 0,
+      totalEarnings: 0,
+      totalSpent: 0,
     };
 
-    const settlementBatches = [
+    // Calculate actual 30-day monthly payouts from Transaction collection
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const monthlyPayoutAgg = await Transaction.aggregate([
       {
-        id: 'BAT-2026-081',
-        desc: 'Farmer Agroforestry Subsidy Direct Credit Batch (42 Beneficiaries)',
-        amount: 420000,
-        date: '01 Sep 2026',
-        status: 'COMPLETED',
-        channel: 'NPCI DBT Gateway',
+        $match: {
+          type: 'DEBIT',
+          status: 'COMPLETED',
+          createdAt: { $gte: thirtyDaysAgo },
+        },
       },
       {
-        id: 'BAT-2026-082',
-        desc: 'Enterprise Partner Field Inspection & Drone Survey Settlement',
-        amount: 18450,
-        date: '02 Sep 2026',
-        status: 'COMPLETED',
-        channel: 'ICICI Commercial Corporate IMPS',
+        $group: {
+          _id: null,
+          totalMonthlyPayout: { $sum: '$amount' },
+        },
+      },
+    ]);
+    const monthlyPayouts = monthlyPayoutAgg[0]?.totalMonthlyPayout ?? stats.totalSpent ?? 0;
+
+    // Marketplace GMV from real completed purchases
+    const gmvAgg = await Transaction.aggregate([
+      {
+        $match: {
+          category: 'MARKETPLACE_PURCHASE',
+          status: 'COMPLETED',
+        },
       },
       {
-        id: 'BAT-2026-083',
-        desc: 'Quarterly Carbon Sequestration Reward Distribution (Anand & Kheda)',
-        amount: 888000,
-        date: '05 Sep 2026',
-        status: 'COMPLETED',
-        channel: 'Sovereign Smart Escrow Pool',
+        $group: {
+          _id: null,
+          totalGMV: { $sum: '$amount' },
+        },
       },
-    ];
+    ]);
+    const marketplaceGMV = gmvAgg[0]?.totalGMV ?? 0;
+
+    // Query real settlement batches / payout transactions from database
+    const recentTxns = await Transaction.find({
+      type: { $in: ['DEBIT', 'CREDIT'] },
+    })
+      .sort({ createdAt: -1 })
+      .limit(10);
+
+    const settlementBatches = recentTxns.map((tx) => ({
+      id: tx.transactionId || tx.referenceId || `BAT-${tx._id.toString().slice(-6).toUpperCase()}`,
+      desc: tx.title || tx.description || 'Treasury Disbursal Settlement',
+      amount: tx.amount || 0,
+      date: new Date(tx.createdAt || tx.timestamp).toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      }),
+      status: tx.status || 'COMPLETED',
+      channel: tx.paymentMethod ? tx.paymentMethod.replace(/_/g, ' ') : 'NPCI DBT Gateway',
+    }));
 
     return {
       totalWallets,
-      escrowReservesINR: stats.totalEscrow || 4850000,
-      monthlyPayoutsINR: 845000,
-      marketplaceGMVINR: 1420000,
-      pendingClearancesINR: 118000,
-      totalLiquidLiquidityINR: stats.totalLiquid || 4850000,
+      escrowReservesINR: stats.totalEscrow || 0,
+      monthlyPayoutsINR: monthlyPayouts || 0,
+      marketplaceGMVINR: marketplaceGMV || 0,
+      pendingClearancesINR: stats.totalLocked || 0,
+      totalLiquidLiquidityINR: stats.totalLiquid || 0,
       settlementBatches,
     };
   },

@@ -16,7 +16,14 @@ const kycApplicationSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ['FARMER_KYC', 'LAND_REGISTRATION', 'PARTNER_ONBOARDING', 'INSURANCE_CLAIM'],
+      enum: [
+        'FARMER_KYC',
+        'LAND_REGISTRATION',
+        'PARTNER_ONBOARDING',
+        'GOVERNMENT_ONBOARDING',
+        'CITIZEN_ONBOARDING',
+        'INSURANCE_CLAIM',
+      ],
       default: 'FARMER_KYC',
       index: true,
     },

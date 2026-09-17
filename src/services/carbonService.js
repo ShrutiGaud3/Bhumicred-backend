@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { CarbonCredit } from '../models/CarbonCredit.js';
 import { CarbonAuditRequest } from '../models/CarbonAuditRequest.js';
+import { Project } from '../models/Project.js';
 import { Land } from '../models/Land.js';
 import { User } from '../models/User.js';
 import { Document } from '../models/Document.js';
@@ -8,55 +9,47 @@ import { AppError } from '../utils/appError.js';
 
 export const carbonService = {
   /**
-   * 1. Public / Farmer Carbon Marketplace Opportunities & Project Registry
+   * 1. Public / Farmer Carbon Marketplace Opportunities & Project Registry (from MongoDB)
    */
   async getCarbonOpportunities(query = {}) {
-    const opportunities = [
-      {
-        id: 'OPP-AGRO-01',
-        title: 'High-Resin Teak & Sandalwood Bio-Sequestration Cluster',
-        location: 'Anand & Kheda Districts, Gujarat',
-        standard: 'Sovereign Agro-Carbon Registry / VCS VM0042',
-        vintageYear: 2026,
-        pricePerTonne: 1450,
-        availableCreditsTons: 1250.0,
-        totalSequesteredTons: 3800.0,
-        ndviHealthRating: '0.78 (Optimal High Canopy)',
-        issuingAgency: 'ISRO Space Applications Centre & Sovereign Carbon Directorate',
-        projectType: 'Agroforestry & Mixed Hardwood Plantation',
-        eligiblePanchayats: ['Mogri', 'Dharmaj', 'Karamsad', 'Borsad'],
-      },
-      {
-        id: 'OPP-SOIL-02',
-        title: 'Deep-Rooted Riparian Soil Organic Carbon Restoration',
-        location: 'Sabarmati & Mahi Basin Agro-Corridors',
-        standard: 'Gold Standard GS4GG Agro-Carbon Protocol',
-        vintageYear: 2026,
-        pricePerTonne: 1650,
-        availableCreditsTons: 840.0,
-        totalSequesteredTons: 2400.0,
-        ndviHealthRating: '0.72 (Dense Vegetative Cover)',
-        issuingAgency: 'National Soil Carbon Directorate & NABL Agro Labs',
-        projectType: 'Soil Organic Carbon & Perennial Cover',
-        eligiblePanchayats: ['Vasna', 'Gambhira', 'Umreth'],
-      },
-      {
-        id: 'OPP-MANGROVE-03',
-        title: 'Coastal Blue-Carbon & Estuarine Mangrove Buffer',
-        location: 'Gulf of Khambhat Estuarine Zone',
-        standard: 'Plan Vivo Sovereign Coastal Carbon Standard',
-        vintageYear: 2026,
-        pricePerTonne: 2100,
-        availableCreditsTons: 520.0,
-        totalSequesteredTons: 1600.0,
-        ndviHealthRating: '0.84 (Pristine Blue Carbon Buffer)',
-        issuingAgency: 'Gujarat Ecology Commission & Sovereign Blue Registry',
-        projectType: 'Estuarine Coastal Carbon Sequestration',
-        eligiblePanchayats: ['Cambay Coastal Cluster', 'Kavi Zone'],
-      },
-    ];
+    try {
+      const filter = {};
+      if (query.status) filter.status = query.status;
+      if (query.category) filter.category = query.category;
 
-    return opportunities;
+      const dbProjects = await Project.find(filter).sort({ createdAt: -1 });
+
+      const opportunities = dbProjects.map((p) => {
+        const estPerAcre = p.carbonCreditEstimatePerAcre || 4.5;
+        const totalAcres = (p.totalHectaresTarget || 20) * 2.471;
+        const availableCredits = Math.round(totalAcres * estPerAcre);
+        const sequestered = Math.round(((p.saplingsPlanted || p.saplingsTarget || 850) * 0.125) * 10) / 10;
+        const year = p.startDate ? new Date(p.startDate).getFullYear() : 2026;
+
+        return {
+          id: p.projectCode || `OPP-${p._id}`,
+          _id: p._id,
+          title: p.title,
+          location: p.location ? `${p.location.gramPanchayat || p.location.district || 'Anand'}, ${p.location.state || 'Gujarat'}` : 'Anand District, Gujarat',
+          standard: 'Sovereign Agro-Carbon Registry / VCS VM0042',
+          vintageYear: year,
+          pricePerTonne: 1450,
+          availableCreditsTons: availableCredits,
+          totalSequesteredTons: sequestered,
+          ndviHealthRating: '0.78 (Optimal High Canopy)',
+          issuingAgency: 'ISRO Space Applications Centre & Sovereign Carbon Directorate',
+          projectType: p.categoryLabel || 'Agroforestry & Mixed Hardwood Plantation',
+          eligiblePanchayats: [p.location?.gramPanchayat || 'Mogri', 'Dharmaj', 'Karamsad', 'Borsad'],
+          progress: p.progress || 0,
+          status: p.status || 'IN_PROGRESS',
+        };
+      });
+
+      return opportunities;
+    } catch (err) {
+      console.warn('Error fetching carbon projects from database:', err);
+      return [];
+    }
   },
 
   /**
