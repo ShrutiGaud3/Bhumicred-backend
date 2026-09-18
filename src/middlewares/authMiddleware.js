@@ -84,3 +84,25 @@ export const checkPermission = (requiredPermission) => {
     next();
   };
 };
+
+export const requireApprovedUser = (req, res, next) => {
+  if (!req.user) {
+    return next(new AppError('Authentication required.', HTTP_STATUS.UNAUTHORIZED));
+  }
+
+  // Super Admin and Admin staff have unrestricted administrative access
+  if (req.user.role === 'SUPER_ADMIN' || req.user.role === 'ADMIN_STAFF') {
+    return next();
+  }
+
+  const isApproved = req.user.status === 'APPROVED' || req.user.status === 'ACTIVE';
+  if (!isApproved) {
+    return next(
+      new AppError(
+        'Your registration application is currently pending administrative verification and approval. Dashboard actions are locked until approved.',
+        HTTP_STATUS.FORBIDDEN
+      )
+    );
+  }
+  next();
+};
